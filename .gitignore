@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+
+# Data (raw filings, processed indexes — regenerable via scripts)
+data/raw/
+data/processed/
+data/financebench/*.csv
+data/financebench/*.json
+data/financebench/*.jsonl
+
+# Claude Code local session state
+.claude/
+
+# Model / experiment artifacts
+mlruns/
+*.faiss
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
