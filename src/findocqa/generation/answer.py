@@ -2,7 +2,8 @@ from google import genai
 from google.genai import types
 
 from findocqa.config import settings
-from findocqa.retrieval.vector_store import search
+from findocqa.retrieval import vector_store
+from findocqa.retrieval.hybrid import hybrid_search
 
 _SYSTEM_PROMPT = (
     "You are a financial analyst assistant answering questions about SEC "
@@ -12,8 +13,17 @@ _SYSTEM_PROMPT = (
 )
 
 
-def answer_question(question: str, top_k: int = 5) -> dict:
-    chunks = search(question, top_k=top_k)
+def answer_question(
+    question: str,
+    top_k: int = 5,
+    variant: str = "table_aware",
+    use_hybrid: bool = True,
+) -> dict:
+    if use_hybrid:
+        chunks = hybrid_search(question, top_k=top_k, variant=variant)
+    else:
+        chunks = vector_store.search(question, top_k=top_k, variant=variant)
+
     context = "\n\n---\n\n".join(
         f"[{c['doc_name']} | chunk {c['chunk_index']}]\n{c['text']}" for c in chunks
     )

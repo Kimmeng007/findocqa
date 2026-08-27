@@ -12,6 +12,7 @@ which aren't standard EDGAR forms and are out of scope here).
 Usage:
     uv run scripts/ingest.py --limit 5
     uv run scripts/ingest.py --company "3M"
+    uv run scripts/ingest.py --doc-name AMAZON_2017_10K --doc-name ADOBE_2016_10K
 """
 
 import argparse
@@ -31,10 +32,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--company", type=str, default=None)
+    parser.add_argument(
+        "--doc-name", action="append", default=None, help="Exact doc_name(s) to ingest"
+    )
     args = parser.parse_args()
 
     docs = [d for d in get_document_info() if d["doc_type"] in _FORM_TYPE_BY_DOC_TYPE]
-    if args.company:
+    if args.doc_name:
+        wanted = set(args.doc_name)
+        docs = [d for d in docs if d["doc_name"] in wanted]
+    elif args.company:
         docs = [d for d in docs if args.company.lower() in d["company"].lower()]
     if args.limit:
         docs = docs[: args.limit]

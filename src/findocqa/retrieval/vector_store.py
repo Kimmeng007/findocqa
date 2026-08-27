@@ -9,36 +9,47 @@ from findocqa.config import DATA_DIR
 from findocqa.retrieval.chunking import Chunk
 from findocqa.retrieval.embeddings import embed_texts
 
-INDEX_DIR = DATA_DIR / "processed" / "faiss"
-INDEX_PATH = INDEX_DIR / "index.faiss"
-METADATA_PATH = INDEX_DIR / "chunks.jsonl"
+
+def _variant_dir(variant: str) -> Path:
+    return DATA_DIR / "processed" / variant
 
 
-def build_index(chunks: list[Chunk]) -> None:
-    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+def _index_path(variant: str) -> Path:
+    return _variant_dir(variant) / "faiss" / "index.faiss"
+
+
+def _metadata_path(variant: str) -> Path:
+    return _variant_dir(variant) / "faiss" / "chunks.jsonl"
+
+
+def build_index(chunks: list[Chunk], variant: str) -> None:
+    index_path = _index_path(variant)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
     vectors = embed_texts([c.text for c in chunks]).astype("float32")
 
     index = faiss.IndexFlatIP(vectors.shape[1])
     index.add(vectors)
-    faiss.write_index(index, str(INDEX_PATH))
+    faiss.write_index(index, str(index_path))
 
-    with METADATA_PATH.open("w", encoding="utf-8") as f:
+    with _metadata_path(variant).open("w", encoding="utf-8") as f:
         for chunk in chunks:
             f.write(json.dumps(asdict(chunk)) + "\n")
 
 
-def _load_metadata() -> list[dict]:
-    with METADATA_PATH.open(encoding="utf-8") as f:
+def load_metadata(variant: str) -> list[dict]:
+    with _metadata_path(variant).open(encoding="utf-8") as f:
         return [json.loads(line) for line in f]
 
 
-def search(query: str, top_k: int = 5) -> list[dict]:
-    if not INDEX_PATH.exists():
+def search(query: str, top_k: int = 5, variant: str = "table_aware") -> list[dict]:
+    index_path = _index_path(variant)
+    if not index_path.exists():
         raise FileNotFoundError(
-            f"No FAISS index at {INDEX_PATH} — run scripts/build_index.py first."
+            f"No FAISS index at {index_path} — run "
+            f"scripts/build_index.py --variant {variant} first."
         )
-    index = faiss.read_index(str(INDEX_PATH))
-    metadata = _load_metadata()
+    index = faiss.read_index(str(index_path))
+    metadata = load_metadata(variant)
 
     query_vec = embed_texts([query]).astype("float32")
     scores, indices = index.search(query_vec, top_k)
