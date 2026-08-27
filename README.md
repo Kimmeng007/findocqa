@@ -15,7 +15,8 @@ cp .env.example .env   # then fill in ANTHROPIC_API_KEY, MONGODB_URI, SEC_EDGAR_
 ```
 
 You need:
-- An [Anthropic API key](https://console.anthropic.com/)
+- A [Google AI Studio API key](https://aistudio.google.com/apikey) (Gemini
+  free tier — no card required)
 - A [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) free-tier
   cluster connection string
 
@@ -43,7 +44,7 @@ uv run pytest
 - `src/findocqa/ingestion/` — EDGAR/FinanceBench fetching, PDF parsing
 - `src/findocqa/storage/` — MongoDB (raw parsed filings + metadata)
 - `src/findocqa/retrieval/` — chunking, embeddings, FAISS vector store
-- `src/findocqa/generation/` — prompt + Claude call for QA
+- `src/findocqa/generation/` — prompt + Gemini call for QA
 - `src/findocqa/agent/` — LangGraph agent (Week 4)
 - `src/findocqa/eval/` — RAGAS + agent eval harness (Week 3)
 - `src/findocqa/api/`, `src/findocqa/ui/` — FastAPI + Streamlit (Week 5)

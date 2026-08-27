@@ -12,7 +12,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "sentence-transformers>=3.3",
     "faiss-cpu>=1.9",
-    "anthropic>=0.40",
+    "google-genai>=1.2",
     "pandas>=2.2",
 ]
 

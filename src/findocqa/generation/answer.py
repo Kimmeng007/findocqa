@@ -1,4 +1,5 @@
-import anthropic
+from google import genai
+from google.genai import types
 
 from findocqa.config import settings
 from findocqa.retrieval.vector_store import search
@@ -17,21 +18,15 @@ def answer_question(question: str, top_k: int = 5) -> dict:
         f"[{c['doc_name']} | chunk {c['chunk_index']}]\n{c['text']}" for c in chunks
     )
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    response = client.messages.create(
+    client = genai.Client(api_key=settings.google_api_key)
+    response = client.models.generate_content(
         model=settings.generation_model,
-        max_tokens=1024,
-        system=_SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Context:\n{context}\n\nQuestion: {question}",
-            }
-        ],
+        contents=f"Context:\n{context}\n\nQuestion: {question}",
+        config=types.GenerateContentConfig(system_instruction=_SYSTEM_PROMPT),
     )
 
     return {
         "question": question,
-        "answer": response.content[0].text,
+        "answer": response.text,
         "retrieved_chunks": chunks,
     }
