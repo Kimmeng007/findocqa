@@ -12,17 +12,26 @@ _SYSTEM_PROMPT = (
     "guessing. Cite the source document name when you use a figure."
 )
 
+_MODES = ("dense", "hybrid", "hybrid_no_rerank")
+
+
+def _retrieve(question: str, top_k: int, variant: str, mode: str) -> list[dict]:
+    if mode == "dense":
+        return vector_store.search(question, top_k=top_k, variant=variant)
+    if mode == "hybrid":
+        return hybrid_search(question, top_k=top_k, variant=variant, use_reranker=True)
+    if mode == "hybrid_no_rerank":
+        return hybrid_search(question, top_k=top_k, variant=variant, use_reranker=False)
+    raise ValueError(f"Unknown mode {mode!r}, expected one of {_MODES}")
+
 
 def answer_question(
     question: str,
     top_k: int = 5,
     variant: str = "table_aware",
-    use_hybrid: bool = True,
+    mode: str = "hybrid",
 ) -> dict:
-    if use_hybrid:
-        chunks = hybrid_search(question, top_k=top_k, variant=variant)
-    else:
-        chunks = vector_store.search(question, top_k=top_k, variant=variant)
+    chunks = _retrieve(question, top_k, variant, mode)
 
     context = "\n\n---\n\n".join(
         f"[{c['doc_name']} | chunk {c['chunk_index']}]\n{c['text']}" for c in chunks

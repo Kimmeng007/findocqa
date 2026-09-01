@@ -17,15 +17,8 @@ Usage:
 
 import argparse
 
-from findocqa.config import DATA_DIR
-from findocqa.ingestion.edgar_client import download_file, find_filing, lookup_cik
 from findocqa.ingestion.financebench_docs import get_document_info
-from findocqa.ingestion.parser import parse_html
-from findocqa.storage.mongo import upsert_filing
-
-RAW_DIR = DATA_DIR / "raw"
-
-_FORM_TYPE_BY_DOC_TYPE = {"10k": "10-K", "10q": "10-Q"}
+from findocqa.ingestion.pipeline import FORM_TYPE_BY_DOC_TYPE, ingest_document
 
 
 def main() -> None:
@@ -37,7 +30,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    docs = [d for d in get_document_info() if d["doc_type"] in _FORM_TYPE_BY_DOC_TYPE]
+    docs = [d for d in get_document_info() if d["doc_type"] in FORM_TYPE_BY_DOC_TYPE]
     if args.doc_name:
         wanted = set(args.doc_name)
         docs = [d for d in docs if d["doc_name"] in wanted]
@@ -50,43 +43,13 @@ def main() -> None:
     cik_cache: dict[str, str | None] = {}
 
     for i, doc in enumerate(docs, start=1):
-        doc_name = doc["doc_name"]
-        company = doc["company"]
-        form_type = _FORM_TYPE_BY_DOC_TYPE[doc["doc_type"]]
-        print(f"[{i}/{len(docs)}] {doc_name}")
-
+        print(f"[{i}/{len(docs)}] {doc['doc_name']}")
         try:
-            cik = cik_cache.setdefault(company, lookup_cik(company))
-            if not cik:
-                raise ValueError(f"could not resolve CIK for company {company!r}")
-
-            filing = find_filing(cik, form_type, doc["doc_period"])
-            if not filing:
-                raise ValueError(
-                    f"no {form_type} found on EDGAR for CIK {cik} / FY{doc['doc_period']}"
-                )
-
-            html_path = RAW_DIR / f"{doc_name}.htm"
-            download_file(filing["url"], html_path)
-            blocks = parse_html(html_path)
+            n_blocks = ingest_document(doc, cik_cache)
         except Exception as exc:
             print(f"  FAILED: {exc}")
             continue
-
-        upsert_filing(
-            {
-                "doc_name": doc_name,
-                "company": company,
-                "gics_sector": doc.get("gics_sector"),
-                "filing_type": doc["doc_type"],
-                "fiscal_year": doc["doc_period"],
-                "cik": cik,
-                "accession_number": filing["accession_number"],
-                "source_url": filing["url"],
-                "blocks": blocks,
-            }
-        )
-        print(f"  stored {len(blocks)} blocks from {filing['url']}")
+        print(f"  stored {n_blocks} blocks")
 
 
 if __name__ == "__main__":

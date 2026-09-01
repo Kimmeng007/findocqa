@@ -64,9 +64,9 @@ def main() -> None:
         print(f"Q: {question}")
         print(f"Expected: {expected}")
 
-        naive = answer_question(question, top_k=5, variant="naive", use_hybrid=False)
+        naive = answer_question(question, top_k=5, variant="naive", mode="dense")
         time.sleep(CALL_DELAY_SECONDS)
-        hybrid = answer_question(question, top_k=5, variant="table_aware", use_hybrid=True)
+        hybrid = answer_question(question, top_k=5, variant="table_aware", mode="hybrid")
         time.sleep(CALL_DELAY_SECONDS)
 
         print(f"\n[naive dense-only]\n{naive['answer']}")

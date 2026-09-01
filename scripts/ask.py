@@ -9,20 +9,21 @@ import argparse
 
 from findocqa.generation.answer import answer_question
 
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("question", type=str)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--variant", choices=["naive", "table_aware"], default="table_aware")
-    parser.add_argument("--mode", choices=["dense", "hybrid"], default="hybrid")
+    parser.add_argument(
+        "--mode", choices=["dense", "hybrid", "hybrid_no_rerank"], default="hybrid"
+    )
     args = parser.parse_args()
 
     result = answer_question(
         args.question,
         top_k=args.top_k,
         variant=args.variant,
-        use_hybrid=(args.mode == "hybrid"),
+        mode=args.mode,
     )
 
     print(f"Retrieved context ({args.variant} / {args.mode}):")

@@ -21,6 +21,8 @@ data/financebench/*.jsonl
 
 # Model / experiment artifacts
 mlruns/
+mlartifacts/
+mlflow.db
 *.faiss
 
 # Editor / OS

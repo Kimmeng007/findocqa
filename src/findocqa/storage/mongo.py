@@ -26,3 +26,7 @@ def upsert_filing(doc: dict) -> None:
 
 def iter_filings():
     yield from get_filings_collection().find()
+
+
+def get_existing_doc_names() -> set[str]:
+    return {d["doc_name"] for d in get_filings_collection().find({}, {"doc_name": 1})}
