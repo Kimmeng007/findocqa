@@ -29,3 +29,6 @@ mlflow.db
 .vscode/
 .idea/
 .DS_Store
+
+# IDE-exported PDF duplicates of the markdown docs
+*.pdf

@@ -18,12 +18,25 @@ from ragas.run_config import RunConfig
 
 from findocqa.config import settings
 from findocqa.generation.answer import answer_question
-
-CALL_DELAY_SECONDS = 4  # Gemini free tier: 15 requests/min
+from findocqa.generation.rate_limit import throttle
 
 
 def _judge_llm():
+    """Patches the client's actual generate_content call (not RAGAS's
+    llm.generate() wrapper) so every real network attempt is throttled —
+    including Instructor's own internal retries on a 429, which happen
+    *inside* a single generate() call and would otherwise slip past a
+    throttle wrapped only around the outer call. See
+    generation/rate_limit.py for why this has to be the innermost
+    interception point, not just paced externally."""
     client = genai.Client(api_key=settings.google_api_key)
+    original_generate_content = client.models.generate_content
+
+    def throttled_generate_content(*args, **kwargs):
+        throttle()
+        return original_generate_content(*args, **kwargs)
+
+    client.models.generate_content = throttled_generate_content
     return llm_factory(settings.generation_model, provider="google", client=client)
 
 
@@ -62,7 +75,6 @@ def build_eval_rows(questions: list[dict], variant: str, mode: str) -> list[dict
                 "error": error,
             }
         )
-        time.sleep(CALL_DELAY_SECONDS)
     return rows
 
 
@@ -94,10 +106,12 @@ def run_ragas_metrics(rows: list[dict]) -> dict[str, list[float | None]]:
         return scores_by_metric
 
     dataset = EvaluationDataset(samples=samples)
-    # Gemini free tier: 15 requests/min. Default max_workers=16 would burst
-    # well past that within one evaluate() call; keep concurrency low so
-    # we rely on steady throughput rather than retries/backoff eating time.
-    run_config = RunConfig(max_workers=2)
+    # Concurrency no longer needs to do the rate-limiting work — every real
+    # call is paced by the shared throttle in _judge_llm() regardless of
+    # how many workers dispatch it. max_workers=1 keeps behavior simple and
+    # deterministic rather than relying on concurrent threads all queuing
+    # on the same lock.
+    run_config = RunConfig(max_workers=1)
     result = evaluate(
         dataset, metrics=metrics, llm=llm, embeddings=embeddings, run_config=run_config
     )

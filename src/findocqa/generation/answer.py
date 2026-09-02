@@ -2,6 +2,7 @@ from google import genai
 from google.genai import types
 
 from findocqa.config import settings
+from findocqa.generation.rate_limit import throttle
 from findocqa.retrieval import vector_store
 from findocqa.retrieval.hybrid import hybrid_search
 
@@ -38,6 +39,7 @@ def answer_question(
     )
 
     client = genai.Client(api_key=settings.google_api_key)
+    throttle()
     response = client.models.generate_content(
         model=settings.generation_model,
         contents=f"Context:\n{context}\n\nQuestion: {question}",
