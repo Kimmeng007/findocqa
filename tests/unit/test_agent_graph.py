@@ -16,6 +16,17 @@ def test_looks_insufficient_detects_the_models_own_refusal_phrasing():
     assert _looks_insufficient("Therefore, I cannot answer the question.")
 
 
+def test_looks_insufficient_regression_missed_phrasing_from_first_live_agent_run():
+    # The first real live agent run (Week 4) produced exactly this
+    # phrasing and the trigger silently missed it -- self-correction
+    # never fired when it should have. Locking this in as a regression
+    # test now that the marker list has been broadened to catch it.
+    assert _looks_insufficient(
+        "Based on the provided context, there is no information about "
+        "3M's revenue growth for the last two fiscal years."
+    )
+
+
 def test_looks_insufficient_false_for_a_real_answer():
     assert not _looks_insufficient(
         "Based on the provided context, 3M's FY2018 capital expenditure was $1,577 million."

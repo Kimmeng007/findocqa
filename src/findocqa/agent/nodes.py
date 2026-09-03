@@ -24,9 +24,11 @@ MAX_RETRIES_PER_SUBQUESTION = 2
 # signal that retrieval came up short, rather than a new heuristic.
 _INSUFFICIENT_CONTEXT_MARKERS = (
     "not enough information",
+    "no information",  # catches "there is no information about..." too
     "does not contain",
     "there is no mention",
     "cannot answer",
+    "does not provide",
 )
 
 _DECOMPOSE_SYSTEM_PROMPT = (
@@ -57,7 +59,8 @@ def _client() -> genai.Client:
 
 def decompose(state: AgentState) -> dict:
     throttle()
-    response = _client().models.generate_content(
+    client = _client()  # kept alive for the whole call, including any SDK-internal retries
+    response = client.models.generate_content(
         model=settings.generation_model,
         contents=state["question"],
         config=types.GenerateContentConfig(
@@ -81,7 +84,8 @@ def _generate_answer(question: str, chunks: list[dict]) -> str:
         f"[{c['doc_name']} | chunk {c['chunk_index']}]\n{c['text']}" for c in chunks
     )
     throttle()
-    response = _client().models.generate_content(
+    client = _client()
+    response = client.models.generate_content(
         model=settings.generation_model,
         contents=f"Context:\n{context}\n\nQuestion: {question}",
         config=types.GenerateContentConfig(
@@ -127,7 +131,8 @@ def answer_subquestion(state: AgentState) -> dict:
 
 def _reformulate(question: str) -> str:
     throttle()
-    response = _client().models.generate_content(
+    client = _client()
+    response = client.models.generate_content(
         model=settings.generation_model,
         contents=question,
         config=types.GenerateContentConfig(
@@ -158,7 +163,8 @@ def synthesize(state: AgentState) -> dict:
         for sa in state["sub_answers"]
     )
     throttle()
-    response = _client().models.generate_content(
+    client = _client()
+    response = client.models.generate_content(
         model=settings.generation_model,
         contents=(
             f"Original question: {state['question']}\n\n"
