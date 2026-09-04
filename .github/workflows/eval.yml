@@ -1,0 +1,48 @@
+name: RAG Eval
+
+# Deliberately NOT triggered on every push, unlike test.yml. The spec's
+# original wording ("auto-run the eval suite on every prompt/retriever/
+# agent change") isn't viable here: Gemini's free-tier daily quota (500
+# requests/model/day) was hit twice during this project's own local
+# development from ordinary iteration, and a single 20-question RAGAS
+# run alone used most of a day's budget. Running the real eval on every
+# push would exhaust the quota within a couple of commits and make CI
+# unreliable -- the opposite of the goal. Manual trigger keeps the eval
+# harness integrated into CI/CD tooling (still rare among comparable
+# public repos) without pretending a hard external rate limit doesn't
+# exist.
+on:
+  workflow_dispatch:
+    inputs:
+      n_questions:
+        description: "Number of FinanceBench questions to evaluate (keep small to stay within Gemini's free-tier daily quota)"
+        required: false
+        default: "10"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run eval
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          SEC_EDGAR_USER_AGENT: ${{ vars.SEC_EDGAR_USER_AGENT || 'FinDocQA CI (github-actions@users.noreply.github.com)' }}
+        run: uv run python scripts/run_eval.py --n-questions ${{ inputs.n_questions }}
+
+      - name: Upload eval results
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: data/processed/eval_runs/*.json
