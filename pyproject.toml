@@ -21,6 +21,7 @@ dependencies = [
     "mlflow>=2.17",
     "jsonref>=1.1.0",
     "langgraph>=1.0.1",
+    "streamlit>=1.63.0",
 ]
 
 [dependency-groups]

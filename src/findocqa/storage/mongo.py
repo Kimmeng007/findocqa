@@ -30,3 +30,12 @@ def iter_filings():
 
 def get_existing_doc_names() -> set[str]:
     return {d["doc_name"] for d in get_filings_collection().find({}, {"doc_name": 1})}
+
+
+def get_ingested_filings_summary() -> list[dict]:
+    """One row per filing: company, fiscal year, filing type -- used by the
+    demo UI to show what's actually available rather than just a count."""
+    docs = get_filings_collection().find(
+        {}, {"company": 1, "fiscal_year": 1, "filing_type": 1, "doc_name": 1, "_id": 0}
+    )
+    return sorted(docs, key=lambda d: (d["company"], d["fiscal_year"]))
