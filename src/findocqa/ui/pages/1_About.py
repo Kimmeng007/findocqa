@@ -85,11 +85,12 @@ with st.expander("Full breakdown, all configs and both eval runs"):
     st.caption(
         "Context precision/recall remain low in absolute terms even "
         "after these fixes -- an honest, measured result, not hidden. "
-        "Root cause (per TECHNICAL_REPORT.md 7.4/7.5): a general-purpose "
-        "reranker not tuned for financial-table text, and a real "
-        "vocabulary gap between how questions and filings phrase the "
-        "same figure -- a larger piece of future work than anything "
-        "reasonable to bolt on so far."
+        "Tested whether swapping in a finance-tuned embedding model and "
+        "two stronger rerankers would close the gap (TECHNICAL_REPORT.md "
+        "7.11) -- none of the 5 models tried fixed the underlying issue, "
+        "which turned out not to be a model-quality problem at all: a "
+        "structural fix (extracting table rows into labeled facts rather "
+        "than matching passages by similarity) is the real next step."
     )
 
 st.header("⚠️ Known limitations")

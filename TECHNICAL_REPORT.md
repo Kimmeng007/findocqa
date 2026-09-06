@@ -681,3 +681,61 @@ reranker not tuned for financial-table text, and a genuine vocabulary
 gap between question phrasing and filing phrasing, are a larger,
 separate piece of future work than retrieval-filtering fixes can close
 on their own.
+
+### 7.11 Tested whether a finance-tuned model would fix it — it doesn't, and here's the evidence
+
+7.4/7.5 identified the remaining gap as the embedding/reranker models
+lacking finance-domain tuning. Rather than assume a finance-tuned model
+would fix it (and pay the cost of a full corpus reindex to find out),
+tested the hypothesis directly and cheaply first, against the exact
+known-hard case: does `"capital expenditure"` (the question's wording)
+score closer to the correct row (`"Purchases of property, plant and
+equipment (PP&E) | (1,577) | ..."`) than to a plausible-but-wrong
+distractor (forward-looking prose: *"The Company expects 2019 capital
+spending to be approximately $1.7 billion to $1.9 billion..."*)?
+
+**Embedding model** — `FinLang/finance-embeddings-investopedia` (a
+real, verified finance-domain-tuned model, built on BAAI/bge-base,
+confirmed to load and run) vs. the current `BAAI/bge-small-en-v1.5`:
+
+| | sim(query, correct row) | sim(query, wrong distractor) | correct ranks higher? |
+|---|---|---|---|
+| bge-small (current) | 0.643 | 0.766 | No |
+| FinLang finance-tuned | 0.422 | 0.754 | No — **worse gap** |
+
+The finance-tuned model was substantially *better* at rejecting a
+totally irrelevant distractor (a lease-terms sentence scored 0.597
+under bge-small vs. 0.164 under FinLang) — genuinely more finance-aware
+in that sense — but on the actual failure mode that matters here, it
+made the misranking worse, not better.
+
+**Reranker** — tested two stronger general-purpose cross-encoders
+against the same pair (no finance-specific reranker exists as a free,
+established option — confirmed via search before testing, so none was
+available to try):
+
+| | score(correct row) | score(wrong distractor) | correct ranks higher? |
+|---|---|---|---|
+| ms-marco-MiniLM-L-6-v2 (current) | -10.90 | 4.28 | No |
+| ms-marco-MiniLM-L-12-v2 (larger) | -10.70 | 6.07 | No |
+| BAAI/bge-reranker-base (stronger, more modern) | 0.0002 | 0.9959 | No |
+
+**Conclusion**: 5 models tested (2 embedding, 3 reranking, including a
+verified finance-tuned one and a materially stronger general one), zero
+of them rank the correct chunk above the wrong one on this case. This
+is a consistent enough result to rule out "swap the model" as the fix,
+not just an inconclusive one-off. The actual failure isn't a
+domain-vocabulary gap a better embedding model closes — it's that every
+one of these is a surface-level semantic-similarity model being asked
+to distinguish "the exact figure" from "fluent, on-topic prose about
+the same subject," which none of them are built to do.
+
+**What would actually fix it**: a structural change, not a model swap —
+extracting each table row into an explicit, labeled fact (company,
+fiscal year, line-item label, value) as its own indexable unit, so the
+correct answer is found by matching the line-item label directly rather
+than by embedding similarity between two passages. That's a genuinely
+larger piece of engineering (a table-to-structured-facts extraction
+layer) than anything in scope for this pass — documented here as the
+concrete, scoped next step rather than left as a vague "needs more
+work."
