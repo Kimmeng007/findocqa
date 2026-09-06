@@ -217,6 +217,11 @@ if run_clicked and question.strip():
                 retry_note = f" _(after {sa['retry_count']} retry)_" if sa["retry_count"] else ""
                 st.markdown(f"**{sa['sub_question']}**{retry_note}")
                 st.write(sa["answer"])
+                for tc in sa.get("tool_calls", []):
+                    if "error" in tc:
+                        st.caption(f"🧮 called `{tc['name']}({tc['args']['expression']})` -> error: {tc['error']}")
+                    else:
+                        st.caption(f"🧮 called `{tc['name']}({tc['args']['expression']})` = {tc['result']}")
                 st.divider()
 
 elif run_clicked:

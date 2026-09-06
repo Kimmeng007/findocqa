@@ -6,6 +6,7 @@ class SubAnswer(TypedDict):
     answer: str
     retrieved_chunks: list[dict]
     retry_count: int
+    tool_calls: list[dict]
 
 
 class AgentState(TypedDict):
