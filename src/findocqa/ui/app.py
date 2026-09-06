@@ -31,6 +31,70 @@ st.markdown(
     "See `PROGRESS.md` for the full story."
 )
 
+with st.expander("⚙️ How it works"):
+    st.markdown(
+        "1. **Ingest**: filings are pulled from SEC EDGAR and parsed into "
+        "ordered text/table blocks.\n"
+        "2. **Chunk**: tables are kept intact (never split mid-table) so a "
+        "figure and its header stay together -- a real bug found and fixed "
+        "in Week 2.\n"
+        "3. **Retrieve**: hybrid search combines dense embeddings (FAISS) "
+        "with keyword search (BM25), fused via Reciprocal Rank Fusion, then "
+        "re-scored by a cross-encoder reranker. The company/fiscal year "
+        "named in the question narrows the search first, so retrieval "
+        "isn't disambiguating company, year, *and* topic all at once.\n"
+        "4. **Answer**: Gemini generates an answer grounded only in the "
+        "retrieved excerpts, citing the source filing.\n"
+        "5. **Agent mode** (optional): a LangGraph agent decomposes "
+        "multi-part or comparison questions into sub-questions, retries "
+        "retrieval when context looks insufficient, and can invoke a "
+        "calculator tool for derived figures.\n\n"
+        "Full write-up with real bugs found and fixed at each stage: "
+        "`TECHNICAL_REPORT.md`."
+    )
+
+with st.expander("📈 Measured results (Week 3 RAGAS eval, 20-question subset)"):
+    st.markdown(
+        "Three retrieval configs, scored on the same 20 real FinanceBench "
+        "questions -- not a claim, an actual run logged to MLflow "
+        "(`data/processed/eval_runs/`, `mlruns/`):"
+    )
+    st.table(
+        {
+            "Config": ["naive + dense only", "hybrid + BM25 (no rerank)", "hybrid + BM25 + reranker"],
+            "Faithfulness": ["0.787", "0.805", "0.912"],
+            "Context precision": ["0.087", "0.117", "0.092"],
+            "Context recall": ["0.150", "0.100", "0.100"],
+            "Numerical accuracy": ["0.211", "0.211", "0.211"],
+        }
+    )
+    st.caption(
+        "Faithfulness (is the answer actually supported by the retrieved "
+        "text) improves clearly with hybrid retrieval + reranking. Context "
+        "precision/recall are low across the board -- an honest, measured "
+        "result, not hidden -- and are exactly what the company/fiscal-year "
+        "filtering fix (see Known limitations below) targets. Full "
+        "methodology in `TECHNICAL_REPORT.md` section 4."
+    )
+
+with st.expander("⚠️ Known limitations"):
+    st.markdown(
+        "- **Retrieval disambiguation**: fixed a regression where growing "
+        "the corpus caused same-topic chunks from the wrong company or "
+        "fiscal year to outrank the right one -- retrieval now filters by "
+        "company/year detected in the question.\n"
+        "- **Still open**: a specific-figure question can fail when the "
+        "right number sits inside a large table chunk with many unrelated "
+        "line items, or when the question's wording (\"capital "
+        "expenditure\") differs from the filing's exact phrasing "
+        "(\"purchases of property, plant and equipment\"). Diagnosed, not "
+        "yet fully fixed -- documented rather than hidden.\n"
+        "- **Shared free-tier quota**: this demo shares one Gemini API key "
+        "across every visitor (500 requests/day). Heavy use may exhaust it "
+        "for the day.\n\n"
+        "Full detail: `TECHNICAL_REPORT.md`."
+    )
+
 
 @st.cache_data(ttl=300)
 def _corpus_summary() -> list[dict]:
@@ -116,6 +180,16 @@ with st.sidebar:
             ["hybrid", "dense", "hybrid_no_rerank"],
             help="hybrid = dense+BM25+reranker. See PROGRESS.md for the measured Week 3 comparison of these.",
         )
+
+    st.divider()
+    st.header("About")
+    st.markdown(
+        "Built by **Kimmeng Hong** as an AI engineering portfolio project.\n\n"
+        "📧 [hongkimmeng17@gmail.com](mailto:hongkimmeng17@gmail.com)\n\n"
+        "💻 [GitHub repo](https://github.com/Kimmeng007/findocqa)\n\n"
+        "🔗 [LinkedIn](https://www.linkedin.com/in/kimmeng-hong-09109222a/)\n\n"
+        "🌐 [Portfolio site](https://kimmeng007.github.io/)"
+    )
 
 question = st.text_area(
     "Ask a question about a filing already in the corpus:",
