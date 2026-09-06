@@ -44,37 +44,52 @@ st.markdown(
 
 st.header("📈 Measured results")
 st.caption(
-    "Week 3 RAGAS eval, 20-question subset of FinanceBench — best config "
-    "(hybrid + BM25 + reranker) vs. the Week 1 naive baseline:"
+    "Same 20-question FinanceBench subset, same config (hybrid + BM25 + "
+    "reranker) — before vs. after this session's retrieval fixes "
+    "(company/fiscal-year filtering with graceful fallback, finer table "
+    "chunking, wider candidate pool when filtered):"
 )
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Faithfulness", "0.912", "+0.125 vs. naive")
-col2.metric("Context precision", "0.092", "+0.005 vs. naive")
-col3.metric("Context recall", "0.100", "-0.050 vs. naive")
-col4.metric("Numerical accuracy", "0.211", "+0.000 vs. naive")
+col1.metric("Faithfulness", "0.850", "-0.062 vs. before")
+col2.metric("Context precision", "0.122", "+0.030 vs. before")
+col3.metric("Context recall", "0.167", "+0.067 vs. before")
+col4.metric("Numerical accuracy", "0.263", "+0.052 vs. before")
+st.caption(
+    "Precision, recall, and numerical accuracy — the metrics these fixes "
+    "targeted — all improved. Faithfulness dropped somewhat: broader "
+    "retrieval surfaces more content, and not all of it is as tightly "
+    "quote-supported by the generated answer. A real, reported trade-off, "
+    "not hidden. Full root-cause analysis in `TECHNICAL_REPORT.md` "
+    "section 7."
+)
 
-with st.expander("Full breakdown across all 3 configs"):
+with st.expander("Full breakdown, all configs and both eval runs"):
     st.markdown(
         "Not a claim -- an actual run logged to MLflow "
         "(`data/processed/eval_runs/`, `mlruns/`):"
     )
     st.table(
         {
-            "Config": ["naive + dense only", "hybrid + BM25 (no rerank)", "hybrid + BM25 + reranker"],
-            "Faithfulness": ["0.787", "0.805", "0.912"],
-            "Context precision": ["0.087", "0.117", "0.092"],
-            "Context recall": ["0.150", "0.100", "0.100"],
-            "Numerical accuracy": ["0.211", "0.211", "0.211"],
+            "Config": [
+                "naive + dense only",
+                "hybrid + BM25 (no rerank)",
+                "hybrid + BM25 + reranker (before fixes)",
+                "hybrid + BM25 + reranker (after fixes)",
+            ],
+            "Faithfulness": ["0.787", "0.805", "0.912", "0.850"],
+            "Context precision": ["0.087", "0.117", "0.092", "0.122"],
+            "Context recall": ["0.150", "0.100", "0.100", "0.167"],
+            "Numerical accuracy": ["0.211", "0.211", "0.211", "0.263"],
         }
     )
     st.caption(
-        "Faithfulness (is the answer actually supported by the retrieved "
-        "text) improves clearly with hybrid retrieval + reranking. Context "
-        "precision/recall are low across the board, and recall is "
-        "actually *lower* for the reranked config than the naive baseline "
-        "-- an honest, measured result, shown rather than hidden, and "
-        "exactly what the company/fiscal-year filtering fix below "
-        "targets. Full methodology in `TECHNICAL_REPORT.md` section 4."
+        "Context precision/recall remain low in absolute terms even "
+        "after these fixes -- an honest, measured result, not hidden. "
+        "Root cause (per TECHNICAL_REPORT.md 7.4/7.5): a general-purpose "
+        "reranker not tuned for financial-table text, and a real "
+        "vocabulary gap between how questions and filings phrase the "
+        "same figure -- a larger piece of future work than anything "
+        "reasonable to bolt on so far."
     )
 
 st.header("⚠️ Known limitations")
@@ -82,7 +97,9 @@ st.markdown(
     "- **Retrieval disambiguation**: fixed a regression where growing "
     "the corpus caused same-topic chunks from the wrong company or "
     "fiscal year to outrank the right one -- retrieval now filters by "
-    "company/year detected in the question.\n"
+    "company/year detected in the question, and falls back to a looser "
+    "filter rather than returning nothing if the named year isn't the "
+    "one actually in the corpus for that company.\n"
     "- **Still open**: a specific-figure question can fail when the "
     "right number sits inside a large table chunk with many unrelated "
     "line items, or when the question's wording (\"capital "

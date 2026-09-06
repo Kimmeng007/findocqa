@@ -599,3 +599,85 @@ input across 3 calls: the company name survived every rephrasing after
 the fix, where it hadn't reliably before. Not re-run through the full
 multi-call agent graph again to avoid spending further shared quota on
 what direct verification already confirmed at the root cause.
+
+### 7.8 Widened the reranker's candidate pool when filtering has already narrowed the search
+
+Once company/fiscal-year filtering has shrunk the search to a handful
+of filings, a wider pre-reranking candidate pool gives the reranker
+more chances to see the right chunk, and costs much less than widening
+it globally (FAISS/BM25 scoring is nearly free regardless of `top_k`;
+only cross-encoder reranking cost scales with pool size). Measured the
+latency/pool-size tradeoff directly with warm models before picking a
+value: 30/retriever → ~3.6s, 50 → ~4.7s, 70 → ~6.3s, 100 → ~8.3s.
+Shipped `CANDIDATES_WHEN_FILTERED = 60` (only when a company or fiscal
+year was actually detected; unfiltered whole-corpus queries keep the
+original default of 30) as the balance: meaningfully wider without
+doubling response time.
+
+### 7.9 A real, generalizable bug: a hard year filter can return *zero* chunks
+
+A full 20-question re-run of `table_aware_hybrid_rerank` (see 7.10)
+surfaced something the earlier isolated checks hadn't: 4 of 20
+questions came back with **zero retrieved chunks**, not just wrong
+ones — for MGM Resorts, Amazon, and Walmart, each asking for a
+multi-year figure ("FY2018–FY2020 3-year average", "FY2016 to FY2017
+change").
+
+Root cause: `detect_fiscal_year` extracts one year from the question
+(the first one it finds), but a multi-year question's first-mentioned
+year isn't necessarily one the corpus actually has for that company —
+e.g. the question named FY2018 for MGM Resorts, but the only MGM
+Resorts filings ingested are FY2020 and FY2023Q2. Filtering hard on
+`company="MGM Resorts", fiscal_year=2018` then matches nothing, even
+though the FY2020 filing exists and could partially answer. A filter
+narrowing the search should never produce a *worse* result than no
+filter at all — but here it did, turning a partially-answerable
+question into a zero-context one.
+
+**Fix**: `_retrieve` in `generation/answer.py` now falls back step by
+step only when the current filter's result set is empty: company+year
+→ company only → no filter. Verified directly against the three
+concrete failing cases (MGM Resorts, Amazon, Walmart) — all three now
+return real chunks from the correct company's filing instead of
+nothing. Added `tests/unit/test_answer_retrieve.py` covering all three
+fallback transitions with mocked retrieval, so this can't silently
+regress. Full suite green (45 passed).
+
+### 7.10 Real, measured effect of this session's fixes on context precision/recall
+
+The whole point of sections 7.1–7.9 was to raise context precision and
+recall, which section 4's original eval measured as low as 0.087–0.150
+— low enough to be worth directly re-measuring rather than assuming
+the fixes helped. Re-ran `table_aware_hybrid_rerank` on the exact same
+20-question deterministic subset (same seed, same questions) via
+`scripts/rerun_best_config.py`, under a new checkpoint name so it
+couldn't be silently skipped by the resume logic against the old
+pre-fix checkpoint. Hit a transient Gemini-side outage on the first
+attempt (503 "high demand" on 16/20 generation calls — confirmed not a
+quota or code issue) and a real bug on the second attempt (7.9,
+4 zero-context rows excluded from scoring); a third run, needing only
+4 fresh answers thanks to the resume logic, produced a full, valid
+20/20 sample:
+
+| Metric | Before (original eval) | After (this session's fixes) | Change |
+|---|---|---|---|
+| Faithfulness | 0.912 | 0.850 | −0.062 |
+| Context precision | 0.092 | 0.122 | +0.030 (+33% relative) |
+| Context recall | 0.100 | 0.167 | +0.067 (+67% relative) |
+| Numerical accuracy | 0.211 | 0.263 | +0.052 (+25% relative) |
+
+Precision, recall, and numerical accuracy — the metrics these fixes
+specifically targeted — all improved, recall by the largest relative
+margin. Faithfulness dropped: broader retrieval (filtering + fallback +
+wider candidate pool) surfaces more content overall, and evidently not
+all of it is as tightly quote-supported by the generated answer as the
+narrower, pre-fix retrieval was. Reported here rather than only
+reporting the metrics that improved — the honest result is a real
+trade-off, not an unambiguous win.
+
+Context precision/recall remain low in absolute terms even after this.
+That's consistent with 7.4/7.5's root-cause finding: a general-purpose
+reranker not tuned for financial-table text, and a genuine vocabulary
+gap between question phrasing and filing phrasing, are a larger,
+separate piece of future work than retrieval-filtering fixes can close
+on their own.
