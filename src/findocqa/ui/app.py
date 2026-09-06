@@ -37,6 +37,23 @@ def _corpus_summary() -> list[dict]:
     return get_ingested_filings_summary()
 
 
+def _friendly_error(exc: Exception) -> str:
+    """Public demos share one Gemini free-tier quota across every visitor
+    -- this project hit that exact 500-requests/day cap twice during its
+    own development (see TECHNICAL_REPORT.md), so a stranger hitting it
+    on a public deployment is a real, expected scenario, not a rare edge
+    case worth a raw traceback."""
+    message = str(exc)
+    if "RESOURCE_EXHAUSTED" in message or "429" in message:
+        return (
+            "⚠️ This demo shares one free-tier Gemini API quota "
+            "(500 requests/day) across everyone who tries it, and it's "
+            "been used up for today. Please try again later -- see "
+            "TECHNICAL_REPORT.md for why this limit exists."
+        )
+    return f"Request failed: {exc}"
+
+
 try:
     filings = _corpus_summary()
 except Exception as exc:
@@ -114,7 +131,7 @@ if run_clicked and question.strip():
             try:
                 result = answer_question(question, variant=variant, mode=pipeline_mode)
             except Exception as exc:
-                st.error(f"Request failed: {exc}")
+                st.error(_friendly_error(exc))
                 st.stop()
 
         st.subheader("Answer")
@@ -130,7 +147,7 @@ if run_clicked and question.strip():
             try:
                 result = run_agent(question)
             except Exception as exc:
-                st.error(f"Request failed: {exc}")
+                st.error(_friendly_error(exc))
                 st.stop()
 
         st.subheader("Final answer")
