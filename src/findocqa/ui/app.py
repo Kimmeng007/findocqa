@@ -20,17 +20,15 @@ st.set_page_config(page_title="FinDocQA", page_icon="📊", layout="wide")
 
 st.title("📊 FinDocQA")
 st.markdown(
-    "**What this is:** ask a plain-English question about a company's SEC "
-    "financial filing (10-K annual report or 10-Q quarterly report) and get "
-    "an answer grounded in the actual filing text -- not the model's general "
-    "knowledge. Every answer shows exactly which filing excerpt it came "
-    "from, so you can verify it yourself instead of taking it on faith.\n\n"
-    "**Who this is for:** a research prototype for anyone who'd otherwise "
-    "have to manually read a 100+ page filing to find one figure -- "
-    "analysts, investors, or researchers doing financial-filing lookups. "
-    "See `PROGRESS.md` for the full story."
+    "##### Ask questions about SEC financial filings, answered from the filing text itself."
 )
-st.caption("📄 See the **About** page (sidebar navigation, top) for how it works, measured eval results, and known limitations.")
+st.caption(
+    "Not the model's general knowledge — every answer cites the exact "
+    "filing excerpt it came from, so you can verify it yourself. "
+    "Evaluated against the public FinanceBench benchmark. See the "
+    "**About** page (sidebar) for architecture, measured results, and "
+    "known limitations."
+)
 
 
 @st.cache_data(ttl=300)
@@ -68,11 +66,12 @@ by_company: dict[str, list[str]] = defaultdict(list)
 for f in filings:
     by_company[f["company"]].append(f"{f['filing_type'].upper()} FY{f['fiscal_year']}")
 
-st.markdown(
+st.info(
     f"**What you can ask about:** only companies/years actually loaded below "
     f"({len(filings)} filings across {len(by_company)} companies) -- a "
     "question about a company or year not listed here will honestly come "
-    "back \"not enough information\" rather than a guess."
+    "back \"not enough information\" rather than a guess.",
+    icon="📁",
 )
 with st.expander("See exactly which filings are loaded"):
     for company in sorted(by_company):
@@ -145,8 +144,9 @@ if run_clicked and question.strip():
                 st.error(_friendly_error(exc))
                 st.stop()
 
-        st.subheader("Answer")
-        st.write(result["answer"])
+        with st.container(border=True):
+            st.subheader("Answer")
+            st.write(result["answer"])
 
         with st.expander(f"Retrieved sources ({len(result['retrieved_chunks'])})"):
             for c in result["retrieved_chunks"]:
@@ -161,8 +161,9 @@ if run_clicked and question.strip():
                 st.error(_friendly_error(exc))
                 st.stop()
 
-        st.subheader("Final answer")
-        st.write(result["final_answer"])
+        with st.container(border=True):
+            st.subheader("Final answer")
+            st.write(result["final_answer"])
 
         with st.expander(f"Sub-questions ({len(result['sub_answers'])})"):
             for sa in result["sub_answers"]:
@@ -175,9 +176,4 @@ elif run_clicked:
     st.warning("Type a question first.")
 
 st.divider()
-st.caption(
-    "This is a portfolio research project, not a production financial "
-    "advisory tool -- see PROGRESS.md / TECHNICAL_REPORT.md for measured "
-    "accuracy numbers and known limitations. Gemini's free tier caps at "
-    "500 requests/day; heavy use may hit that limit."
-)
+st.caption("Portfolio project by Kimmeng Hong — not a production financial advisory tool. See the **About** page for details.")

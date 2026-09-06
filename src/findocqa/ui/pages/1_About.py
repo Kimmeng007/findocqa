@@ -3,9 +3,13 @@ contact -- split out from app.py so the main page stays focused on the
 interactive Q&A demo instead of a long scroll of write-up.
 """
 
+from pathlib import Path
+
 import streamlit as st
 
 st.set_page_config(page_title="About — FinDocQA", page_icon="📊")
+
+PHOTO_PATH = Path(__file__).parent.parent / "assets" / "profile.jpg"
 
 st.title("About FinDocQA")
 st.markdown(
@@ -39,29 +43,39 @@ st.markdown(
 )
 
 st.header("📈 Measured results")
-st.caption("Week 3 RAGAS eval, 20-question subset of FinanceBench")
-st.markdown(
-    "Three retrieval configs, scored on the same 20 real FinanceBench "
-    "questions -- not a claim, an actual run logged to MLflow "
-    "(`data/processed/eval_runs/`, `mlruns/`):"
-)
-st.table(
-    {
-        "Config": ["naive + dense only", "hybrid + BM25 (no rerank)", "hybrid + BM25 + reranker"],
-        "Faithfulness": ["0.787", "0.805", "0.912"],
-        "Context precision": ["0.087", "0.117", "0.092"],
-        "Context recall": ["0.150", "0.100", "0.100"],
-        "Numerical accuracy": ["0.211", "0.211", "0.211"],
-    }
-)
 st.caption(
-    "Faithfulness (is the answer actually supported by the retrieved "
-    "text) improves clearly with hybrid retrieval + reranking. Context "
-    "precision/recall are low across the board -- an honest, measured "
-    "result, not hidden -- and are exactly what the company/fiscal-year "
-    "filtering fix below targets. Full methodology in "
-    "`TECHNICAL_REPORT.md` section 4."
+    "Week 3 RAGAS eval, 20-question subset of FinanceBench — best config "
+    "(hybrid + BM25 + reranker) vs. the Week 1 naive baseline:"
 )
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Faithfulness", "0.912", "+0.125 vs. naive")
+col2.metric("Context precision", "0.092", "+0.005 vs. naive")
+col3.metric("Context recall", "0.100", "-0.050 vs. naive")
+col4.metric("Numerical accuracy", "0.211", "+0.000 vs. naive")
+
+with st.expander("Full breakdown across all 3 configs"):
+    st.markdown(
+        "Not a claim -- an actual run logged to MLflow "
+        "(`data/processed/eval_runs/`, `mlruns/`):"
+    )
+    st.table(
+        {
+            "Config": ["naive + dense only", "hybrid + BM25 (no rerank)", "hybrid + BM25 + reranker"],
+            "Faithfulness": ["0.787", "0.805", "0.912"],
+            "Context precision": ["0.087", "0.117", "0.092"],
+            "Context recall": ["0.150", "0.100", "0.100"],
+            "Numerical accuracy": ["0.211", "0.211", "0.211"],
+        }
+    )
+    st.caption(
+        "Faithfulness (is the answer actually supported by the retrieved "
+        "text) improves clearly with hybrid retrieval + reranking. Context "
+        "precision/recall are low across the board, and recall is "
+        "actually *lower* for the reranked config than the naive baseline "
+        "-- an honest, measured result, shown rather than hidden, and "
+        "exactly what the company/fiscal-year filtering fix below "
+        "targets. Full methodology in `TECHNICAL_REPORT.md` section 4."
+    )
 
 st.header("⚠️ Known limitations")
 st.markdown(
@@ -82,10 +96,19 @@ st.markdown(
 )
 
 st.header("Contact")
-st.markdown(
-    "Built by **Kimmeng Hong**.\n\n"
-    "📧 [hongkimmeng17@gmail.com](mailto:hongkimmeng17@gmail.com)\n\n"
-    "💻 [GitHub repo](https://github.com/Kimmeng007/findocqa)\n\n"
-    "🔗 [LinkedIn](https://www.linkedin.com/in/kimmeng-hong-09109222a/)\n\n"
-    "🌐 [Portfolio site](https://kimmeng007.github.io/)"
-)
+with st.container(border=True):
+    col_photo, col_info = st.columns([1, 3])
+    with col_photo:
+        if PHOTO_PATH.exists():
+            st.image(str(PHOTO_PATH), width=150)
+        else:
+            st.markdown("### 🧑‍💻")
+    with col_info:
+        st.markdown("### Kimmeng Hong")
+        st.caption("Builder of FinDocQA")
+        st.markdown(
+            "📧 [hongkimmeng17@gmail.com](mailto:hongkimmeng17@gmail.com)  \n"
+            "💻 [GitHub repo](https://github.com/Kimmeng007/findocqa)  \n"
+            "🔗 [LinkedIn](https://www.linkedin.com/in/kimmeng-hong-09109222a/)  \n"
+            "🌐 [Portfolio site](https://kimmeng007.github.io/)"
+        )
