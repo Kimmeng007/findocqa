@@ -140,8 +140,13 @@ def _reformulate(question: str) -> str:
                 "Rephrase this financial-filing question to use different "
                 "keywords and phrasing that might match the source "
                 "document's actual wording more closely, while asking for "
-                "exactly the same information. Return only the rephrased "
-                "question, nothing else."
+                "exactly the same information. You MUST keep any company "
+                "name and any specific fiscal year or date mentioned "
+                "exactly as they appear in the original -- retrieval uses "
+                "them to narrow the search, so dropping or paraphrasing "
+                "them (e.g. into a pronoun) breaks that. Only vary the "
+                "financial terminology and general phrasing. Return only "
+                "the rephrased question, nothing else."
             )
         ),
     )

@@ -562,3 +562,40 @@ caps storage at 512MB. The two variants' index files together use
 ceiling on how much further the corpus can grow before this specific
 caching approach needs revisiting (e.g., dropping the rarely-used
 `naive` baseline variant from the cache, or an external object store).
+
+### 7.7 Live verification found a real bug: reformulation silently dropped company names
+
+Everything above was verified by calling internal functions directly
+(`_retrieve`, `hybrid_search`, etc.) rather than through a real Gemini
+call, specifically to conserve the shared quota. The agent's
+comparison-question path had never actually been exercised end-to-end
+after the company/fiscal-year filtering work, so it was run for real
+once: `"Compare 3M and Amazon's revenue growth over the last two fiscal
+years"`.
+
+Decomposition worked as designed — it split into four sub-questions,
+one per company per year ("What is 3M's revenue growth for the last
+fiscal year?", etc.). But two of the four sub-answers came back visibly
+degraded, one literally saying *"the question does not specify which
+company it refers to"* for a sub-question that began with "What is
+Amazon's revenue growth...".
+
+Root cause: `answer_subquestion`'s retry loop calls `_reformulate()`
+when an answer looks insufficient, and its system prompt only said
+"use different keywords and phrasing" with no instruction to preserve
+the company name. Confirmed directly: reformulating `"What is Amazon's
+revenue growth for the fiscal year prior to the last?"` three times
+produced rephrasings that dropped "Amazon" from the text entirely on
+some runs — silently defeating `detect_company()`'s substring match for
+that retry, so the retried retrieval searched the *whole* corpus again
+instead of just Amazon's filing, exactly the disambiguation failure
+section 7 exists to fix, reintroduced through a code path filtering by
+company/year never accounted for.
+
+**Fix**: `_reformulate`'s system prompt now explicitly requires keeping
+any company name and fiscal year/date exactly as written, varying only
+financial terminology. Re-verified directly against the exact failing
+input across 3 calls: the company name survived every rephrasing after
+the fix, where it hadn't reliably before. Not re-run through the full
+multi-call agent graph again to avoid spending further shared quota on
+what direct verification already confirmed at the root cause.

@@ -53,6 +53,22 @@ def _ensure_index(variant: str) -> None:
     build_variant_index(variant)
 
 
+@st.cache_data(show_spinner=False)
+def _cached_answer_question(question: str, variant: str, mode: str) -> dict:
+    """Every visitor shares one Gemini quota (500 requests/day) -- caching
+    by exact question text means repeat clicks on the same example
+    question (the most common demo interaction) cost quota once per
+    container, not once per visitor. Only successful calls get cached;
+    an exception propagates and is never stored, so a rate-limit error
+    doesn't get stuck as a cached "answer"."""
+    return answer_question(question, variant=variant, mode=mode)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_run_agent(question: str) -> dict:
+    return run_agent(question)
+
+
 def _friendly_error(exc: Exception) -> str:
     """Public demos share one Gemini free-tier quota across every visitor
     -- this project hit that exact 500-requests/day cap twice during its
@@ -163,7 +179,7 @@ if run_clicked and question.strip():
 
         with st.spinner("Retrieving and generating..."):
             try:
-                result = answer_question(question, variant=variant, mode=pipeline_mode)
+                result = _cached_answer_question(question, variant, pipeline_mode)
             except Exception as exc:
                 st.error(_friendly_error(exc))
                 st.stop()
@@ -187,7 +203,7 @@ if run_clicked and question.strip():
 
         with st.spinner("Decomposing, retrieving, and synthesizing (this makes several Gemini calls)..."):
             try:
-                result = run_agent(question)
+                result = _cached_run_agent(question)
             except Exception as exc:
                 st.error(_friendly_error(exc))
                 st.stop()
