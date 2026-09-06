@@ -4,6 +4,7 @@ from google.genai import types
 from findocqa.config import settings
 from findocqa.generation.rate_limit import throttle
 from findocqa.retrieval import vector_store
+from findocqa.retrieval.company_filter import detect_company, detect_fiscal_year
 from findocqa.retrieval.hybrid import hybrid_search
 
 _SYSTEM_PROMPT = (
@@ -17,12 +18,35 @@ _MODES = ("dense", "hybrid", "hybrid_no_rerank")
 
 
 def _retrieve(question: str, top_k: int, variant: str, mode: str) -> list[dict]:
+    # Narrowing to the named company and fiscal year first turns a
+    # multi-company, multi-year corpus-wide search into a small, specific
+    # one -- neither dense similarity nor BM25 reliably disambiguate either
+    # dimension on their own once a company has many same-shaped tables
+    # across years. See company_filter.py.
+    company = detect_company(question)
+    fiscal_year = detect_fiscal_year(question)
     if mode == "dense":
-        return vector_store.search(question, top_k=top_k, variant=variant)
+        return vector_store.search(
+            question, top_k=top_k, variant=variant, company=company, fiscal_year=fiscal_year
+        )
     if mode == "hybrid":
-        return hybrid_search(question, top_k=top_k, variant=variant, use_reranker=True)
+        return hybrid_search(
+            question,
+            top_k=top_k,
+            variant=variant,
+            use_reranker=True,
+            company=company,
+            fiscal_year=fiscal_year,
+        )
     if mode == "hybrid_no_rerank":
-        return hybrid_search(question, top_k=top_k, variant=variant, use_reranker=False)
+        return hybrid_search(
+            question,
+            top_k=top_k,
+            variant=variant,
+            use_reranker=False,
+            company=company,
+            fiscal_year=fiscal_year,
+        )
     raise ValueError(f"Unknown mode {mode!r}, expected one of {_MODES}")
 
 

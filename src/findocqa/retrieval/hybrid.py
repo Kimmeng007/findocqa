@@ -39,10 +39,19 @@ def _reciprocal_rank_fusion(*ranked_lists: list[dict]) -> list[dict]:
 
 
 def hybrid_search(
-    query: str, top_k: int = 5, variant: str = "table_aware", use_reranker: bool = True
+    query: str,
+    top_k: int = 5,
+    variant: str = "table_aware",
+    use_reranker: bool = True,
+    company: str | None = None,
+    fiscal_year: int | None = None,
 ) -> list[dict]:
-    dense = vector_store.search(query, top_k=CANDIDATES_PER_RETRIEVER, variant=variant)
-    sparse = bm25_index.search_bm25(query, top_k=CANDIDATES_PER_RETRIEVER, variant=variant)
+    dense = vector_store.search(
+        query, top_k=CANDIDATES_PER_RETRIEVER, variant=variant, company=company, fiscal_year=fiscal_year
+    )
+    sparse = bm25_index.search_bm25(
+        query, top_k=CANDIDATES_PER_RETRIEVER, variant=variant, company=company, fiscal_year=fiscal_year
+    )
 
     fused = _reciprocal_rank_fusion(dense, sparse)
     if not use_reranker:

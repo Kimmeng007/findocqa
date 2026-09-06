@@ -7,6 +7,7 @@ import numpy as np
 
 from findocqa.config import DATA_DIR
 from findocqa.retrieval.chunking import Chunk
+from findocqa.retrieval.company_filter import doc_fiscal_year
 from findocqa.retrieval.embeddings import embed_texts
 
 
@@ -41,7 +42,13 @@ def load_metadata(variant: str) -> list[dict]:
         return [json.loads(line) for line in f]
 
 
-def search(query: str, top_k: int = 5, variant: str = "table_aware") -> list[dict]:
+def search(
+    query: str,
+    top_k: int = 5,
+    variant: str = "table_aware",
+    company: str | None = None,
+    fiscal_year: int | None = None,
+) -> list[dict]:
     index_path = _index_path(variant)
     if not index_path.exists():
         raise FileNotFoundError(
@@ -52,11 +59,23 @@ def search(query: str, top_k: int = 5, variant: str = "table_aware") -> list[dic
     metadata = load_metadata(variant)
 
     query_vec = embed_texts([query]).astype("float32")
-    scores, indices = index.search(query_vec, top_k)
+    # When a company/year is known, score against the whole index (cheap —
+    # an in-memory dot product) but only keep matching results, so a
+    # same-topic chunk from the wrong company or wrong fiscal year can
+    # never crowd out the right one before disambiguation gets a chance.
+    search_k = len(metadata) if (company or fiscal_year) else top_k
+    scores, indices = index.search(query_vec, search_k)
 
     results = []
     for score, idx in zip(scores[0], indices[0]):
         if idx == -1:
             continue
-        results.append({**metadata[idx], "score": float(score)})
+        meta = metadata[idx]
+        if company and meta["company"].lower() != company.lower():
+            continue
+        if fiscal_year and doc_fiscal_year(meta["doc_name"]) != fiscal_year:
+            continue
+        results.append({**meta, "score": float(score)})
+        if len(results) >= top_k:
+            break
     return results

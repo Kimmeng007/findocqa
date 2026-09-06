@@ -388,3 +388,110 @@ Per the original 6-week spec, still ahead:
 
 Nothing above should be read as "CI/CD is set up" or "it's deployed" —
 those are explicitly future work.
+
+---
+
+## 7. Post-deployment fix: retrieval-disambiguation via metadata filtering
+
+After Weeks 1–5 shipped (agent, CI/CD, Streamlit demo), a previously-passing
+question regressed as the corpus grew to 44 filings: "What is the FY2018
+capital expenditure amount (in USD millions) for 3M?" started coming back
+"not enough information."
+
+### 7.1 Diagnosis
+
+Traced directly: the correct chunk (`3M_2018_10K`, chunk 385 — the
+Consolidated Statement of Cash Flows table containing
+`Purchases of property, plant and equipment (PP&E) | (1,577) | ...`)
+scored 0.714 on dense cosine similarity, but never made the candidate pool
+because **same-topic capex chunks from 3M's *other* fiscal years scored
+0.77–0.79** — a same-company, wrong-year chunk beat the right one purely
+on topical similarity. BM25 was worse: with 44 documents across dozens of
+companies, generic financial vocabulary ("capital", "expenditure",
+"million") let chunks from CVS Health, Corning, and MGM Resorts outrank
+the correct 3M chunk entirely.
+
+Root cause: **nothing in retrieval ever used the `company` field already
+present on every chunk, or the fiscal year named in the question.**
+Dense/BM25 similarity was being asked to disambiguate company *and* year
+*and* topical relevance all at once, with no structural help — a task
+that gets strictly harder as the corpus grows, which is exactly why this
+regressed only after ingesting more filings.
+
+### 7.2 Fix
+
+Added `src/findocqa/retrieval/company_filter.py`:
+`detect_company(query)` matches the query against the distinct company
+names actually in MongoDB (longest name first, so "American Express"
+matches before a shorter overlapping name would) — but **only returns a
+company if exactly one is named**. A comparison question ("Compare 3M
+and Amazon's revenue growth...") naming two companies must not be
+narrowed to just one of them; that would silently drop the other
+company's chunks entirely, which is worse than not filtering at all.
+This was caught by testing the fix against the project's own example
+comparison question, not assumed to be safe.
+
+`detect_fiscal_year(query)` extracts a year from `FY2018` / `fiscal year
+2018` / a bare `2018`. `doc_fiscal_year(doc_name)` extracts the embedded
+year from a doc name like `3M_2018_10K` — done by regex against the
+existing doc name rather than adding a `fiscal_year` field to chunk
+metadata, to avoid a full corpus reindex for this fix.
+
+Both `vector_store.search()` and `bm25_index.search_bm25()` now accept
+optional `company`/`fiscal_year` filters, applied before truncating to
+`top_k` (both FAISS and BM25 already score the whole corpus internally
+regardless of `top_k`, so filtering costs nothing extra). `hybrid_search()`
+and `generation/answer.py`'s `_retrieve()` — the shared chokepoint used
+by both the simple pipeline and the agent — thread the detected
+company/year through automatically.
+
+### 7.3 Verification
+
+```
+>>> detect_company("What was 3M revenue in FY2019?")
+'3M'
+>>> _retrieve(...) # -> exclusively {'3M_2019_10K'}, was previously mixed
+
+>>> detect_company("What was Amazon net sales in FY2017?")
+'Amazon'
+>>> _retrieve(...) # -> exclusively {'AMAZON_2017_10K'}
+
+>>> detect_company("Compare 3M and Amazon's revenue growth")
+None   # correctly backs off — does not drop either company
+```
+
+Test suite grew from 33 to 41 passing tests (`tests/unit/test_company_filter.py`),
+covering: longest-match preference, no-match, the multi-company back-off
+case, both year-phrasing patterns, and doc-name year extraction.
+
+### 7.4 Honest open finding: this does not fully fix the original 3M capex case
+
+Re-running the diagnosis with company+year filtering active narrows the
+search from 44 documents to the single correct filing — but the target
+chunk still doesn't reach the top of the reranked results (it lands
+around rank 52 of ~300 candidates even with the pool widened to 200).
+The reason is a *second*, different problem layered on top of the first:
+
+- Chunk 385 is one large chunk holding the **entire** cash-flow
+  statement (~20 line items). The specific line the question needs is
+  diluted inside a lot of unrelated numeric text.
+- The question says "capital expenditure"; the filing says "Purchases
+  of property, plant and equipment (PP&E)" — a real vocabulary gap that
+  neither the bi-encoder nor the MS-MARCO-trained cross-encoder reranker
+  reliably bridges.
+
+Tried and **rejected**: literally expanding the query with the synonym
+("...capital expenditure (purchases of property, plant and equipment,
+PP&E)..."). Verified empirically this backfires — it pulled in *other*
+chunks that mention "PP&E" more literally but are actually irrelevant
+(quarterly-data notes mentioning net PP&E book value), ranking them
+above the real answer. Not shipped, because it measurably made this
+case worse rather than better.
+
+This is now a known, documented limitation rather than a silently
+accepted regression: fixing it properly needs finer-grained table
+chunking (e.g., one retrievable unit per line item instead of per
+table) so a single relevant figure isn't buried inside a large chunk.
+Recorded here rather than papered over, per this project's own standard
+of only claiming a fix once it's been checked against the case that
+motivated it.
