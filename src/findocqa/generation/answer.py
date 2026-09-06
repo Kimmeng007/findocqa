@@ -17,14 +17,9 @@ _SYSTEM_PROMPT = (
 _MODES = ("dense", "hybrid", "hybrid_no_rerank")
 
 
-def _retrieve(question: str, top_k: int, variant: str, mode: str) -> list[dict]:
-    # Narrowing to the named company and fiscal year first turns a
-    # multi-company, multi-year corpus-wide search into a small, specific
-    # one -- neither dense similarity nor BM25 reliably disambiguate either
-    # dimension on their own once a company has many same-shaped tables
-    # across years. See company_filter.py.
-    company = detect_company(question)
-    fiscal_year = detect_fiscal_year(question)
+def _retrieve_with(
+    question: str, top_k: int, variant: str, mode: str, company: str | None, fiscal_year: int | None
+) -> list[dict]:
     if mode == "dense":
         return vector_store.search(
             question, top_k=top_k, variant=variant, company=company, fiscal_year=fiscal_year
@@ -48,6 +43,36 @@ def _retrieve(question: str, top_k: int, variant: str, mode: str) -> list[dict]:
             fiscal_year=fiscal_year,
         )
     raise ValueError(f"Unknown mode {mode!r}, expected one of {_MODES}")
+
+
+def _retrieve(question: str, top_k: int, variant: str, mode: str) -> list[dict]:
+    # Narrowing to the named company and fiscal year first turns a
+    # multi-company, multi-year corpus-wide search into a small, specific
+    # one -- neither dense similarity nor BM25 reliably disambiguate either
+    # dimension on their own once a company has many same-shaped tables
+    # across years. See company_filter.py.
+    company = detect_company(question)
+    fiscal_year = detect_fiscal_year(question)
+
+    chunks = _retrieve_with(question, top_k, variant, mode, company, fiscal_year)
+    if chunks:
+        return chunks
+
+    # A multi-year question ("FY2018-2020 average", "FY2016 to FY2017
+    # change") names a year that might not be the one actually ingested
+    # for that company (found via a real eval run: MGM Resorts/Amazon/
+    # Walmart questions naming a year outside what's in the corpus came
+    # back with *zero* chunks, even though a different year of the same
+    # company's filing existed and could have partially answered). A
+    # hard filter should never do worse than no filter at all, so relax
+    # it step by step instead of returning nothing.
+    if fiscal_year is not None:
+        chunks = _retrieve_with(question, top_k, variant, mode, company, None)
+        if chunks:
+            return chunks
+    if company is not None:
+        chunks = _retrieve_with(question, top_k, variant, mode, None, None)
+    return chunks
 
 
 def answer_question(
