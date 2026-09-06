@@ -19,6 +19,23 @@ from findocqa.retrieval.reranker import rerank
 RRF_K = 60
 CANDIDATES_PER_RETRIEVER = 30
 
+# When company/fiscal-year filtering has already narrowed the search space,
+# a wider candidate pool gives the reranker more chances to see the right
+# chunk for exactly the cases this filtering targets. FAISS/BM25 scoring
+# itself is nearly free either way (both already score everything
+# internally regardless of top_k), but cross-encoder reranking cost scales
+# with pool size -- measured ~3.6s at 30/retriever vs. ~8.3s at 100/retriever
+# with warm models. 60 was picked empirically as a middle ground: a real
+# 50% wider pool for ~1s added latency, not a 2x wait for marginal gains
+# past that (see TECHNICAL_REPORT.md).
+CANDIDATES_WHEN_FILTERED = 60
+
+
+def _candidate_pool_size(company: str | None, fiscal_year: int | None) -> int:
+    if company or fiscal_year:
+        return CANDIDATES_WHEN_FILTERED
+    return CANDIDATES_PER_RETRIEVER
+
 
 def _chunk_key(chunk: dict) -> tuple:
     return (chunk["doc_name"], chunk["chunk_index"])
@@ -46,11 +63,12 @@ def hybrid_search(
     company: str | None = None,
     fiscal_year: int | None = None,
 ) -> list[dict]:
+    pool_size = _candidate_pool_size(company, fiscal_year)
     dense = vector_store.search(
-        query, top_k=CANDIDATES_PER_RETRIEVER, variant=variant, company=company, fiscal_year=fiscal_year
+        query, top_k=pool_size, variant=variant, company=company, fiscal_year=fiscal_year
     )
     sparse = bm25_index.search_bm25(
-        query, top_k=CANDIDATES_PER_RETRIEVER, variant=variant, company=company, fiscal_year=fiscal_year
+        query, top_k=pool_size, variant=variant, company=company, fiscal_year=fiscal_year
     )
 
     fused = _reciprocal_rank_fusion(dense, sparse)

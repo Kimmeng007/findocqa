@@ -1,4 +1,9 @@
-from findocqa.retrieval.hybrid import _reciprocal_rank_fusion
+from findocqa.retrieval.hybrid import (
+    CANDIDATES_PER_RETRIEVER,
+    CANDIDATES_WHEN_FILTERED,
+    _candidate_pool_size,
+    _reciprocal_rank_fusion,
+)
 
 
 def _fake_chunk(doc_name: str, chunk_index: int) -> dict:
@@ -29,3 +34,15 @@ def test_fusion_ranks_items_found_by_both_lists_higher():
     fused = _reciprocal_rank_fusion(dense, sparse)
 
     assert fused[0]["chunk_index"] == 2
+
+
+def test_candidate_pool_widens_when_company_or_year_filters_the_search():
+    """Once company/fiscal-year filtering has already shrunk the search
+    space to a handful of filings, a wider reranker pool is nearly free
+    (FAISS/BM25 already score everything internally) -- only the
+    unfiltered, whole-corpus case needs the smaller default to bound
+    reranker cost."""
+    assert _candidate_pool_size(company=None, fiscal_year=None) == CANDIDATES_PER_RETRIEVER
+    assert _candidate_pool_size(company="3M", fiscal_year=None) == CANDIDATES_WHEN_FILTERED
+    assert _candidate_pool_size(company=None, fiscal_year=2018) == CANDIDATES_WHEN_FILTERED
+    assert _candidate_pool_size(company="3M", fiscal_year=2018) == CANDIDATES_WHEN_FILTERED
