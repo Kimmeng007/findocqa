@@ -21,8 +21,15 @@ CHUNK_SIZE_CHARS = 1500
 CHUNK_OVERLAP_CHARS = 200
 
 # Markdown-table rows this large need splitting so a single chunk doesn't
-# blow past the embedding model's effective input window.
-MAX_TABLE_CHUNK_CHARS = 2000
+# blow past the embedding model's effective input window. Kept small
+# (rather than the embedding model's actual ~2000-char budget) on purpose:
+# a large multi-line-item statement (e.g. a 20-row cash flow statement)
+# fitting in one chunk buries any single figure among many others, which
+# measurably hurt both dense and BM25 ranking for a real, specific-figure
+# question (3M FY2018 capex -- see TECHNICAL_REPORT.md section 7.4/7.5).
+# Splitting into small header-repeating groups keeps each retrievable unit
+# focused on a handful of related line items instead of a whole statement.
+MAX_TABLE_CHUNK_CHARS = 500
 CONTEXT_TAIL_CHARS = 200
 
 

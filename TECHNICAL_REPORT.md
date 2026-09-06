@@ -495,3 +495,41 @@ table) so a single relevant figure isn't buried inside a large chunk.
 Recorded here rather than papered over, per this project's own standard
 of only claiming a fix once it's been checked against the case that
 motivated it.
+
+### 7.5 Follow-up: finer table chunking helps, but doesn't fully close the gap
+
+Tried the fix section 7.4 named: lowered `MAX_TABLE_CHUNK_CHARS` from
+2000 to 500 in `chunking.py`, so a ~20-line-item cash flow statement now
+splits into several small, header-repeating chunks instead of one large
+one. Rebuilt the `table_aware` index (43,754 chunks, up from a much
+smaller count with the old threshold) and re-ran the same diagnosis.
+
+**Measured effect**: the chunk containing the exact PP&E/capex line
+moved from dense-similarity rank ~584th (of ~600 candidates, old large
+chunk) to rank ~106th (of ~1,400 candidates, new small chunk) within
+the correctly-filtered single filing — a real, large improvement from
+isolating the line from the other ~19 unrelated ones. It's now small
+enough to plausibly reach a wider candidate pool.
+
+**Still not fully fixed**: even after widening the pool to 250
+candidates per retriever (so the correct chunk is actually present in
+the fused pool this time), the cross-encoder reranker still doesn't
+rank it in the top 5 — it separately, directly scored the correct
+chunk *lower* than several less-relevant ones. Manually confirmed via
+`reranker.rerank()` directly: `cross-encoder/ms-marco-MiniLM-L-6-v2` was
+trained on natural-language web passages, and a markdown table row like
+`| Purchases of property, plant and equipment (PP&E) | (1,577) |` is a
+different input distribution than what it saw in training — it doesn't
+reliably score this as more relevant to "capital expenditure" than
+ordinary prose that happens to mention "capital" near the start.
+
+**Kept anyway**: the finer chunking shipped despite not fully closing
+this one case, because it's independently verified as a net
+improvement (isolates line items generally, real rank improvement
+measured above) and causes no regression on any other verified case
+(company/year disambiguation, comparison back-off — all re-verified
+after this change; full test suite still green). The remaining gap is
+now specifically attributable to the reranker/embedding model itself
+lacking finance-domain tuning, not to chunking or filtering -- a
+different, larger piece of future work (a fine-tuned or finance-specific
+reranker) than anything reasonable to bolt on here.
