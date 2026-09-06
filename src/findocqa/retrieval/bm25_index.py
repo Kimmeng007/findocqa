@@ -19,6 +19,11 @@ def _bm25_path(variant: str) -> Path:
     return DATA_DIR / "processed" / variant / "bm25.pkl"
 
 
+def bm25_file(variant: str) -> Path:
+    """Public accessor so index_cache can sync this file to/from MongoDB."""
+    return _bm25_path(variant)
+
+
 def build_bm25_index(chunks: list[Chunk], variant: str) -> None:
     tokenized = [_tokenize(c.text) for c in chunks]
     bm25 = BM25Okapi(tokenized)

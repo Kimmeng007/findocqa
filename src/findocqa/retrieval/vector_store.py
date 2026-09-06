@@ -23,6 +23,20 @@ def _metadata_path(variant: str) -> Path:
     return _variant_dir(variant) / "faiss" / "chunks.jsonl"
 
 
+def index_files(variant: str) -> tuple[Path, Path]:
+    """(index.faiss path, chunks.jsonl path) -- public accessor so
+    index_cache can sync these files to/from MongoDB."""
+    return _index_path(variant), _metadata_path(variant)
+
+
+def index_exists(variant: str) -> bool:
+    """Lets a caller (e.g. the Streamlit UI) check before searching,
+    since a fresh deploy has MongoDB data but no local index files --
+    those live under gitignored data/processed/ and must be built once
+    per container rather than assumed to already be there."""
+    return _index_path(variant).exists()
+
+
 def build_index(chunks: list[Chunk], variant: str) -> None:
     index_path = _index_path(variant)
     index_path.parent.mkdir(parents=True, exist_ok=True)

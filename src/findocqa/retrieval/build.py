@@ -2,6 +2,7 @@
 scripts/run_eval.py (which needs to rebuild both variants' indexes after
 auto-ingesting whatever filings an eval subset references)."""
 
+from findocqa.retrieval import index_cache
 from findocqa.retrieval.bm25_index import build_bm25_index
 from findocqa.retrieval.chunking import chunk_filing_naive, chunk_filing_table_aware
 from findocqa.retrieval.vector_store import build_index
@@ -28,4 +29,8 @@ def build_variant_index(variant: str) -> int:
 
     build_index(chunks, variant=variant)
     build_bm25_index(chunks, variant=variant)
+    # Every rebuild refreshes MongoDB's cached copy too, so the next
+    # container (a fresh Streamlit Cloud deploy, most importantly) can
+    # download instead of re-embedding the whole corpus from scratch.
+    index_cache.upload_index(variant)
     return len(chunks)

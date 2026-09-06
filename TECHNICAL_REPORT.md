@@ -533,3 +533,32 @@ now specifically attributable to the reranker/embedding model itself
 lacking finance-domain tuning, not to chunking or filtering -- a
 different, larger piece of future work (a fine-tuned or finance-specific
 reranker) than anything reasonable to bolt on here.
+
+### 7.6 Deployment fix: the finer chunking broke cold-start on Streamlit Cloud
+
+Shrinking `MAX_TABLE_CHUNK_CHARS` (7.5) grew the corpus to ~43,754
+chunks. `data/processed/` (the built FAISS/BM25 index files) is
+gitignored, so **every fresh Streamlit Cloud container has MongoDB's
+filing data but no local index** — it has to build one. Measured local
+embedding throughput (~101 texts/sec) put a from-scratch rebuild at
+7+ minutes, likely worse on Streamlit Cloud's free-tier CPU. That's not
+survivable as a cold-start UX for a demo link a recruiter clicks once.
+
+**Fix**: `retrieval/index_cache.py` persists built index files
+(`index.faiss`, `chunks.jsonl`, `bm25.pkl`) in MongoDB GridFS —
+already-provisioned, already-free infrastructure, no new service.
+`build_variant_index()` now uploads after every build; the Streamlit
+UI's `_ensure_index()` tries a GridFS download before falling back to a
+full rebuild (which would then upload for the next container). Verified
+by simulating a fresh container (moved local index files aside,
+confirmed `index_exists()` was `False`) and timing the recovery path:
+**download restored both variants in ~19 seconds total**, vs. 7+
+minutes to rebuild, and retrieval was re-verified correct against the
+downloaded index (not just "files exist").
+
+**Real constraint surfaced by this**: MongoDB Atlas's free tier (M0)
+caps storage at 512MB. The two variants' index files together use
+~297MB of data size (~58% of the cap) — workable today, but a real
+ceiling on how much further the corpus can grow before this specific
+caching approach needs revisiting (e.g., dropping the rarely-used
+`naive` baseline variant from the cache, or an external object store).

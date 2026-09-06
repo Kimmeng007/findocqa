@@ -14,6 +14,8 @@ import streamlit as st
 
 from findocqa.generation.answer import answer_question
 from findocqa.agent.graph import run_agent
+from findocqa.retrieval import index_cache, vector_store
+from findocqa.retrieval.build import build_variant_index
 from findocqa.storage.mongo import get_ingested_filings_summary
 
 st.set_page_config(page_title="FinDocQA", page_icon="📊", layout="wide")
@@ -34,6 +36,21 @@ st.caption(
 @st.cache_data(ttl=300)
 def _corpus_summary() -> list[dict]:
     return get_ingested_filings_summary()
+
+
+@st.cache_resource(show_spinner=False)
+def _ensure_index(variant: str) -> None:
+    """MongoDB has the filings, but the FAISS/BM25 index files live under
+    gitignored data/processed/ -- a fresh container (every redeploy) has
+    none. Tries downloading a previously-built index from MongoDB
+    GridFS first (seconds); only re-embeds the whole corpus from
+    scratch (minutes) if nothing is cached there yet. cache_resource
+    makes every later call in this session an instant no-op."""
+    if vector_store.index_exists(variant):
+        return
+    if index_cache.download_index(variant):
+        return
+    build_variant_index(variant)
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -137,6 +154,13 @@ run_clicked = st.button("Ask", type="primary")
 
 if run_clicked and question.strip():
     if mode_choice.startswith("Simple"):
+        if not vector_store.index_exists(variant):
+            with st.spinner(
+                f"Building the {variant} search index for the first time in "
+                "this session -- one-time setup, may take a few minutes..."
+            ):
+                _ensure_index(variant)
+
         with st.spinner("Retrieving and generating..."):
             try:
                 result = answer_question(question, variant=variant, mode=pipeline_mode)
@@ -154,6 +178,13 @@ if run_clicked and question.strip():
                 st.text(c["text"][:500] + ("..." if len(c["text"]) > 500 else ""))
                 st.divider()
     else:
+        if not vector_store.index_exists("table_aware"):
+            with st.spinner(
+                "Building the search index for the first time in this "
+                "session -- one-time setup, may take a few minutes..."
+            ):
+                _ensure_index("table_aware")
+
         with st.spinner("Decomposing, retrieving, and synthesizing (this makes several Gemini calls)..."):
             try:
                 result = run_agent(question)
