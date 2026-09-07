@@ -739,3 +739,107 @@ larger piece of engineering (a table-to-structured-facts extraction
 layer) than anything in scope for this pass — documented here as the
 concrete, scoped next step rather than left as a vague "needs more
 work."
+
+---
+
+## 8. Week 4 gap-fill: real tool-calling and an agent-level eval
+
+Re-reading the spec's Week 4 checklist against the actual code surfaced
+a real gap: `agent/tools.py`'s `calculate()` existed and was
+unit-tested, but **the agent never actually decided to call it**.
+`graph.py`'s flow was `decompose -> answer_subquestion -> synthesize`
+with no step that gave the model a tool and let it choose to use one —
+dead code from the agent's real execution path. For a project
+positioning itself as "agentic," that's not a minor gap: it's the part
+that makes something agentic rather than a fixed pipeline.
+
+### 8.1 Wiring up real function-calling
+
+Implemented manual (not automatic) function-calling in
+`_generate_answer`, matching this project's existing style of explicit,
+inspectable orchestration rather than delegating to the SDK's AFC. The
+model is offered a `calculate` tool via `types.FunctionDeclaration`;
+when it chooses to call it, the call is intercepted, executed through
+the existing sandboxed `calculate()`, and the result fed back for a
+final text answer — bounded to one round, since a FinanceBench question
+needs at most one derived-figure calculation per sub-question and an
+unbounded tool loop is a cost/safety risk not worth taking.
+
+Verified live, not assumed: a direct call to `answer_subquestion()`
+with a 3-year-average question showed the model correctly deciding to
+call `calculate("(1.420+1.461+1.493)/3")` and using the result — while
+also honestly noting which years' figures were actually available
+versus asked for. Found a real bug in the same test: the follow-up call
+still offered the tool, so the model sometimes called it *again*,
+leaving `.text` as `None`. Fixed by not offering tools on the follow-up
+turn, keeping the round-trip properly bounded.
+
+`SubAnswer` now carries `tool_calls`, and the Streamlit UI shows each
+invocation under its sub-question, so tool use is visible, not
+implicit. Added `tests/unit/test_agent_tool_calling.py` with a fake
+Gemini client covering direct answers, a successful tool round-trip,
+and a `CalculatorError` handled without crashing.
+
+Deliberately **not** wired up: the EDGAR live-fetch tool
+(`ensure_filing_ingested`). Unlike the calculator (pure computation, no
+side effects), autonomous live-fetch mutates MongoDB and triggers a
+full reindex — real side effects and cost/abuse surface on a shared
+public demo. Left unwired as a documented scope decision, not silently
+incomplete.
+
+### 8.2 The agent-level eval the spec calls for, and didn't exist
+
+Week 3 measures the RAG layer; `tests/unit/test_agent_*.py` verify
+individual functions and graph wiring with no real questions or API
+calls; neither is "agent-level eval: tool-call correctness, task
+completion, failure handling" as the spec names it. Built
+`scripts/eval_agent.py`: 6 hand-picked FinanceBench questions from its
+own "Numerical reasoning" category (needs a derived figure — exactly
+what the calculator exists for), restricted to filings already
+ingested so retrieval-corpus-coverage isn't a confound, run through the
+real `run_agent()` pipeline end to end.
+
+**Results, first run:**
+
+| | Result |
+|---|---|
+| Completed without crashing | 6/6 |
+| Tool actually used (of 6 numerical-reasoning questions) | 5/6 |
+| Task completion (numerical accuracy vs. ground truth) | 3/6 |
+
+Failure handling is solid — no crashes, retries stayed bounded (max 2,
+the configured cap) across all 6. Tool-call correctness is good — the
+model reliably recognized when a derived figure was needed. Task
+completion at 50% is a real, mixed result, reported as such rather than
+rounded up: one failure was a genuine retrieval gap (Adobe — the needed
+FY2015/2016 figures weren't found at all, so no tool call happened
+because there was nothing to calculate from); one was arguably a metric
+quirk (Microsoft — the agent correctly said debt "did not increase,"
+directionally right, but didn't restate the ground truth's specific
+"$2.5bn" figure, so the strict numeric-match check scored it wrong).
+
+### 8.3 A second real bug the eval run surfaced: no tool access at synthesis
+
+The remaining failure (Amazon DPO — a multi-step ratio needing several
+gathered figures combined by a final formula) revealed something the
+6-question summary alone didn't: `tool_calls` showed the model using
+`calculate()` for simple pass-throughs of individual figures, but the
+*final* combining formula (`365 * avg_AP / (COGS + Δinventory)`) never
+appeared as a tool call — it was free-text LLM math in `synthesize()`,
+which had no tool access at all. Exactly the arithmetic-error source
+the calculator exists to eliminate, happening at the one step that
+didn't have it.
+
+**Fix**: extracted `_generate_with_calculator()`, shared by
+`_generate_answer` and `synthesize`, so the final combining step gets
+the same tool access per-subquestion generation already had. Verified
+directly against the exact DPO question: the synthesis step now
+genuinely calls `calculate("365 * ((25309 + 34616) / 2) / 111934")` and
+uses the result (97.70) — confirmed by cross-checking the arithmetic
+exactly, not just trusting the tool-call log. The overall answer still
+doesn't match FinanceBench's ground truth (93.86), but the reason
+changed and narrowed: it's now a data-retrieval question (which
+"beginning AP" figure got fetched) with verified-correct arithmetic on
+top of it, not an arithmetic error compounding an unclear data question
+the way it was before. Documented as the honest outcome — a partial
+fix that isolated the remaining problem rather than a complete one.

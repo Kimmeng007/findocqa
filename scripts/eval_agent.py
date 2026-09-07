@@ -67,6 +67,7 @@ def main() -> None:
             continue
 
         tool_calls = [tc for sa in result["sub_answers"] for tc in sa["tool_calls"]]
+        tool_calls += result.get("synthesis_tool_calls", [])
         max_retry = max((sa["retry_count"] for sa in result["sub_answers"]), default=0)
         accuracy = numerical_accuracy(result["final_answer"], q["answer"])
 

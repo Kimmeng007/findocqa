@@ -69,6 +69,13 @@ def _cached_run_agent(question: str) -> dict:
     return run_agent(question)
 
 
+def _show_tool_call(tc: dict) -> None:
+    if "error" in tc:
+        st.caption(f"🧮 called `{tc['name']}({tc['args']['expression']})` -> error: {tc['error']}")
+    else:
+        st.caption(f"🧮 called `{tc['name']}({tc['args']['expression']})` = {tc['result']}")
+
+
 def _friendly_error(exc: Exception) -> str:
     """Public demos share one Gemini free-tier quota across every visitor
     -- this project hit that exact 500-requests/day cap twice during its
@@ -211,6 +218,8 @@ if run_clicked and question.strip():
         with st.container(border=True):
             st.subheader("Final answer")
             st.write(result["final_answer"])
+            for tc in result.get("synthesis_tool_calls", []):
+                _show_tool_call(tc)
 
         with st.expander(f"Sub-questions ({len(result['sub_answers'])})"):
             for sa in result["sub_answers"]:
@@ -218,10 +227,7 @@ if run_clicked and question.strip():
                 st.markdown(f"**{sa['sub_question']}**{retry_note}")
                 st.write(sa["answer"])
                 for tc in sa.get("tool_calls", []):
-                    if "error" in tc:
-                        st.caption(f"🧮 called `{tc['name']}({tc['args']['expression']})` -> error: {tc['error']}")
-                    else:
-                        st.caption(f"🧮 called `{tc['name']}({tc['args']['expression']})` = {tc['result']}")
+                    _show_tool_call(tc)
                 st.divider()
 
 elif run_clicked:

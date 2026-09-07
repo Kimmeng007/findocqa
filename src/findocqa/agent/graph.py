@@ -30,6 +30,7 @@ def run_agent(question: str) -> dict:
             "sub_answers": [],
             "current_index": 0,
             "final_answer": "",
+            "synthesis_tool_calls": [],
         }
     )
     return result

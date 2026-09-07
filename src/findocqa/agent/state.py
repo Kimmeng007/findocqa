@@ -15,3 +15,4 @@ class AgentState(TypedDict):
     sub_answers: list[SubAnswer]
     current_index: int
     final_answer: str
+    synthesis_tool_calls: list[dict]

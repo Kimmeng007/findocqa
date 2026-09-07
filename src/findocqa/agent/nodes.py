@@ -78,7 +78,10 @@ _SYNTHESIZE_SYSTEM_PROMPT = (
     "question and a set of sub-answers already gathered from SEC filings. "
     "Combine them into one clear, final answer to the original question, "
     "citing source documents. If a sub-answer says information was "
-    "missing, acknowledge that gap rather than guessing."
+    "missing, acknowledge that gap rather than guessing. If combining the "
+    "sub-answers into a final figure needs arithmetic (e.g. a ratio built "
+    "from several gathered numbers), use the calculate tool for that final "
+    "combining step rather than computing it yourself."
 )
 
 
@@ -112,21 +115,17 @@ def _looks_insufficient(answer: str) -> bool:
     return any(marker in lowered for marker in _INSUFFICIENT_CONTEXT_MARKERS)
 
 
-def _generate_answer(question: str, chunks: list[dict]) -> tuple[str, list[dict]]:
-    """Returns (answer, tool_calls) -- tool_calls is empty unless the model
-    actually chose to invoke the calculator, so callers/eval code can tell
-    a real tool-use decision from a plain lookup."""
-    context = "\n\n---\n\n".join(
-        f"[{c['doc_name']} | chunk {c['chunk_index']}]\n{c['text']}" for c in chunks
-    )
-    prompt = f"Context:\n{context}\n\nQuestion: {question}"
+def _generate_with_calculator(prompt: str, system_instruction: str) -> tuple[str, list[dict]]:
+    """Shared by _generate_answer and synthesize -- found via a real agent-
+    eval run that giving the calculator only to per-subquestion generation
+    wasn't enough: a multi-step question's *final* combining formula (e.g.
+    DPO = 365 * avg_AP / (COGS + change_in_inventory)) happens in synthesis,
+    after the individual figures are already gathered, and synthesis had no
+    tool access at all -- so that last, often the most error-prone, step of
+    arithmetic was still free-text LLM math. Returns (answer, tool_calls);
+    tool_calls is empty unless the model actually chose to invoke it."""
     config = types.GenerateContentConfig(
-        system_instruction=(
-            "Answer using only the provided context. If it's not enough, "
-            "say so explicitly instead of guessing. If the question needs "
-            "a derived figure (a ratio, percentage, average, or change), "
-            "use the calculate tool rather than computing it yourself."
-        ),
+        system_instruction=system_instruction,
         tools=[types.Tool(function_declarations=[_CALCULATE_TOOL])],
     )
 
@@ -170,10 +169,26 @@ def _generate_answer(question: str, chunks: list[dict]) -> tuple[str, list[dict]
     final = client.models.generate_content(
         model=settings.generation_model,
         contents=follow_up_contents,
-        config=types.GenerateContentConfig(system_instruction=config.system_instruction),
+        config=types.GenerateContentConfig(system_instruction=system_instruction),
     )
     tool_call_record = {"name": fc.name, "args": dict(fc.args), **function_result}
     return final.text, [tool_call_record]
+
+
+def _generate_answer(question: str, chunks: list[dict]) -> tuple[str, list[dict]]:
+    context = "\n\n---\n\n".join(
+        f"[{c['doc_name']} | chunk {c['chunk_index']}]\n{c['text']}" for c in chunks
+    )
+    prompt = f"Context:\n{context}\n\nQuestion: {question}"
+    return _generate_with_calculator(
+        prompt,
+        system_instruction=(
+            "Answer using only the provided context. If it's not enough, "
+            "say so explicitly instead of guessing. If the question needs "
+            "a derived figure (a ratio, percentage, average, or change), "
+            "use the calculate tool rather than computing it yourself."
+        ),
+    )
 
 
 def answer_subquestion(state: AgentState) -> dict:
@@ -240,20 +255,15 @@ def has_more_subquestions(state: AgentState) -> str:
 
 def synthesize(state: AgentState) -> dict:
     if len(state["sub_answers"]) == 1:
-        return {"final_answer": state["sub_answers"][0]["answer"]}
+        return {"final_answer": state["sub_answers"][0]["answer"], "synthesis_tool_calls": []}
 
     sub_answers_text = "\n\n".join(
         f"Sub-question: {sa['sub_question']}\nAnswer: {sa['answer']}"
         for sa in state["sub_answers"]
     )
-    throttle()
-    client = _client()
-    response = client.models.generate_content(
-        model=settings.generation_model,
-        contents=(
-            f"Original question: {state['question']}\n\n"
-            f"Gathered sub-answers:\n{sub_answers_text}"
-        ),
-        config=types.GenerateContentConfig(system_instruction=_SYNTHESIZE_SYSTEM_PROMPT),
+    prompt = (
+        f"Original question: {state['question']}\n\n"
+        f"Gathered sub-answers:\n{sub_answers_text}"
     )
-    return {"final_answer": response.text}
+    answer, tool_calls = _generate_with_calculator(prompt, system_instruction=_SYNTHESIZE_SYSTEM_PROMPT)
+    return {"final_answer": answer, "synthesis_tool_calls": tool_calls}
