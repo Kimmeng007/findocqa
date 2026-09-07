@@ -27,8 +27,7 @@ didn't work and were reverted), and every number actually measured.
 - **Week 3** — RAGAS evaluation harness + MLflow logging, real measured numbers
 - **Week 4** — LangGraph agent: query decomposition, self-correction, real
   tool-calling (calculator), and the agent-level eval the spec calls for
-- **Week 5** — CI (GitHub Actions), Dockerfile, deployment docs, Streamlit
-  demo deployed live
+- **Week 5** — CI (GitHub Actions), Streamlit demo deployed live
 - **Week 6** — this README, architecture diagrams, design-choice rationale,
   error analysis (below)
 
@@ -298,20 +297,6 @@ Runs automatically on every push/PR via GitHub Actions
   Needs `GOOGLE_API_KEY` and `MONGODB_URI` added as repo secrets under
   Settings → Secrets and variables → Actions to run.
 
-## Docker
-
-```bash
-docker build -f deploy/docker/Dockerfile -t findocqa .
-docker run --env-file .env findocqa uv run scripts/ask.py "..."
-```
-
-Containerizes the CLI pipeline above. Not build-tested locally (Docker
-isn't installed in this project's dev environment) — see
-`deploy/aws/DEPLOYMENT.md` for the honest status and how this would map
-to an actual AWS deployment (not done — real ongoing cost, not worth it
-for a portfolio project given the Streamlit Cloud deployment already
-serves the same purpose for free).
-
 ## Project layout
 
 - `src/findocqa/ingestion/` — EDGAR/FinanceBench fetching, HTML parsing
@@ -324,8 +309,6 @@ serves the same purpose for free).
 - `src/findocqa/eval/` — RAGAS harness, custom numerical-accuracy metric,
   eval subset selection
 - `src/findocqa/ui/` — Streamlit demo (deployed at the live-demo link above)
-- `deploy/docker/` — Dockerfile
-- `deploy/aws/` — deployment documentation
 - `.github/workflows/` — CI (tests) + manually-triggered eval workflow
 - `scripts/eval_agent.py` — the agent-level eval (tool-call correctness,
   task completion, failure handling)
