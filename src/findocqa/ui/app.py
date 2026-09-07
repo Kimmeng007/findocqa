@@ -90,6 +90,13 @@ def _friendly_error(exc: Exception) -> str:
             "been used up for today. Please try again later -- see "
             "TECHNICAL_REPORT.md for why this limit exists."
         )
+    if "UNAVAILABLE" in message or "503" in message:
+        return (
+            "⚠️ Gemini is temporarily overloaded on its end (\"high "
+            "demand\" -- not this app's quota or a bug here). This is a "
+            "real, observed occurrence, not hypothetical -- please wait a "
+            "moment and try again."
+        )
     return f"Request failed: {exc}"
 
 
