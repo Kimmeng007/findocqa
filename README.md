@@ -10,7 +10,7 @@ disclosed — not just a working demo.
 (free-tier hosting — see [Live demo notes](#live-demo-notes) below before
 judging a slow first load or a quota error as broken)
 
-**📸 Screenshot:** _(TODO: add screenshot — see below)_
+![FinDocQA demo screenshot](docs/screenshot.png)
 
 **Status:** All 6 weeks of the original plan are built. See
 [findocqa-project-spec.md](findocqa-project-spec.md) for the full plan and
