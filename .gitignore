@@ -32,3 +32,10 @@ mlflow.db
 
 # IDE-exported PDF duplicates of the markdown docs
 *.pdf
+
+# Personal CV -- local scratch file only, contains a phone number,
+# never meant to be committed to this public repo
+cv.tex
+cv.aux
+cv.log
+cv.out
