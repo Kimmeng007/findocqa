@@ -884,3 +884,45 @@ embeddings/reranking on CPU (`device="cpu"` throughout
 `retrieval/embeddings.py` and `retrieval/reranker.py`). This didn't show
 up during local Windows development because Windows' PyPI torch wheel
 doesn't bundle these Linux-specific CUDA packages the same way.
+
+**Fixed**: added `torch` as an explicit direct dependency (it was only
+transitive before) with a `[tool.uv.sources]` override redirecting it to
+PyTorch's official CPU-only wheel index (`download.pytorch.org/whl/cpu`),
+scoped with `marker = "sys_platform == 'linux'"` so Windows dev is
+untouched. `uv lock` confirmed the fix took effect before ever rebuilding
+Docker: it removed every `nvidia-*` package and `triton` from the
+resolved graph, resolving `torch` as `2.14.0+cpu` on Linux while keeping
+`2.13.0` (unaffected) everywhere else.
+
+**Verified, not assumed**: rebuilt the image and re-ran both checks from
+above against the new build:
+
+| | Before | After |
+|---|---|---|
+| Disk usage | 9.32 GB | 2.8 GB |
+| Compressed content | 3.11 GB | 576 MB (5.4x smaller) |
+| `torch` download | 502 MB | 187 MB |
+| `uv sync` step time | ~176s | ~20s |
+
+`uv run pytest` inside the new image: still 48 passed. Re-ran the same
+live end-to-end question from above against the new image (same reused
+MongoDB-cached index volume) — identical correct answer, confirming the
+CPU-only torch swap didn't change retrieval/reranking behavior, only
+image size.
+
+### An unrelated but real finding along the way: WSL2 disk bloat
+
+The first (CUDA-heavy) build filled the host disk enough to crash
+mid-build (`Bus error (core dumped)`, then the Docker daemon itself
+became unresponsive). Root cause, confirmed by inspecting the file
+directly: WSL2 backs Docker Desktop with a dynamically-expanding virtual
+disk (`docker_data.vhdx`) that **grows automatically but never shrinks
+automatically** — even after `docker system prune` freed the space
+*inside* the Linux filesystem, the VHDX file on the Windows host stayed
+at the 22GB it had already grown to. Fixed by shutting down WSL2
+(`wsl --shutdown`) and compacting the VHDX directly via `diskpart`
+(`select vdisk` / `attach vdisk readonly` / `compact vdisk`), which
+reclaimed the space back to the Windows host — not a code fix, but a
+real operational finding worth recording since it's what actually
+caused the crash, and is a normal consequence of any heavy Docker usage
+on Windows, not something specific to a misconfiguration here.

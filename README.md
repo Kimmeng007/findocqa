@@ -297,6 +297,32 @@ Runs automatically on every push/PR via GitHub Actions
   Needs `GOOGLE_API_KEY` and `MONGODB_URI` added as repo secrets under
   Settings → Secrets and variables → Actions to run.
 
+## Docker
+
+```bash
+docker build -f deploy/docker/Dockerfile -t findocqa .
+
+# A fresh container has no local search index (data/processed/ is
+# gitignored) -- download the one already cached in MongoDB Atlas
+# (~seconds) into a named volume instead of rebuilding from scratch:
+docker run --rm --env-file .env -v findocqa-data:/app/data findocqa \
+  uv run python -c "from findocqa.retrieval import index_cache; index_cache.download_index('table_aware')"
+
+# Then run any script against that same volume:
+docker run --rm --env-file .env -v findocqa-data:/app/data findocqa \
+  uv run scripts/ask.py "What was 3M revenue in FY2019?"
+```
+
+Containerizes the CLI pipeline (ingest / build_index / ask / agent_ask /
+run_eval) — the Streamlit demo runs directly on Streamlit Community Cloud
+and doesn't use this container. Actually verified, not just written:
+`uv run pytest` (48 passed) and a live end-to-end question both run
+correctly inside the built image, against the real MongoDB Atlas and
+Gemini API — see `TECHNICAL_REPORT.md` §9 for the full verification, plus
+a real bug found and fixed along the way (the image initially came out
+5.4x larger than necessary because `torch` pulls in unused GPU/CUDA
+dependencies on Linux by default).
+
 ## Project layout
 
 - `src/findocqa/ingestion/` — EDGAR/FinanceBench fetching, HTML parsing
@@ -309,6 +335,7 @@ Runs automatically on every push/PR via GitHub Actions
 - `src/findocqa/eval/` — RAGAS harness, custom numerical-accuracy metric,
   eval subset selection
 - `src/findocqa/ui/` — Streamlit demo (deployed at the live-demo link above)
+- `deploy/docker/` — Dockerfile for the CLI pipeline (verified, see above)
 - `.github/workflows/` — CI (tests) + manually-triggered eval workflow
 - `scripts/eval_agent.py` — the agent-level eval (tool-call correctness,
   task completion, failure handling)

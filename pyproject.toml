@@ -22,12 +22,30 @@ dependencies = [
     "jsonref>=1.1.0",
     "langgraph>=1.0.1",
     "streamlit>=1.63.0",
+    "torch>=2.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
 ]
+
+# torch (pulled in transitively by sentence-transformers) ships GPU/CUDA
+# support by default on Linux -- ~1.5GB+ of nvidia-* packages this project
+# never uses, since embeddings/reranking only ever run on CPU
+# (retrieval/embeddings.py, retrieval/reranker.py). Found via a real
+# Docker build: the image came out at 9.32GB before this fix. Windows
+# isn't affected (its default torch wheel doesn't bundle these), which is
+# why this didn't show up in local dev.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
