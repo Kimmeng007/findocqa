@@ -10,9 +10,7 @@ disclosed — not just a working demo.
 (free-tier hosting — see [Live demo notes](#live-demo-notes) below before
 judging a slow first load or a quota error as broken)
 
-**🎥 Demo video:** _(TODO: add link once recorded — a short walkthrough
-that doesn't depend on the live app's free-tier quota/uptime at the
-moment someone watches)_
+**📸 Screenshot:** _(TODO: add screenshot — see below)_
 
 **Status:** All 6 weeks of the original plan are built. See
 [findocqa-project-spec.md](findocqa-project-spec.md) for the full plan and
