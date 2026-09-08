@@ -843,3 +843,44 @@ changed and narrowed: it's now a data-retrieval question (which
 top of it, not an arithmetic error compounding an unclear data question
 the way it was before. Documented as the honest outcome — a partial
 fix that isolated the remaining problem rather than a complete one.
+
+---
+
+## 9. Docker: actually verified, not just written
+
+The Dockerfile (`deploy/docker/Dockerfile`) had been written and reviewed
+carefully since Week 5, but explicitly documented as **not build-tested**
+— Docker wasn't installed in this project's development environment.
+Installed Docker Desktop and verified it for real:
+
+- `docker build -f deploy/docker/Dockerfile -t findocqa .` — succeeds.
+- `docker run --rm findocqa uv run pytest -q` — **48 passed**, inside the
+  container, not just on the host.
+- A live end-to-end question (`scripts/ask.py "What was 3M revenue in
+  FY2019?"`), run inside the container against the real MongoDB Atlas and
+  Gemini API: connected correctly, retrieved the right company/year
+  chunks (all `3M_2019_10K`), and returned an honest "not enough
+  information" answer rather than a hallucinated number — the same
+  correct behavior verified on the host earlier in this document, now
+  confirmed inside the container too.
+- The container has no local search index on a fresh run (`data/processed/`
+  is gitignored, same as every other fresh-container scenario in this
+  project) — used the MongoDB GridFS cache from §7.6 to download a ready
+  index into a named volume rather than rebuilding from scratch, and the
+  same cache-first design paid off here too, not just on Streamlit Cloud.
+
+### A real finding from the verification: unnecessary CUDA bloat
+
+`docker images` reported the built image at **9.32 GB disk usage / 3.11 GB
+compressed content** — much larger than expected for a CPU-only
+application. Root cause: `torch` (pulled in transitively by
+`sentence-transformers`) is a GPU-enabled build by default on Linux, so
+installing it inside the Linux container pulled in the full CUDA runtime
+as separate packages this project never uses — `nvidia-cublas` (403MB),
+`nvidia-cudnn` (349MB), `nvidia-cusolver` (191MB), `nvidia-cusparse`
+(139MB), `triton` (188MB), and several more, totaling well over 1.5GB of
+GPU libraries with zero effect on a project that only ever runs
+embeddings/reranking on CPU (`device="cpu"` throughout
+`retrieval/embeddings.py` and `retrieval/reranker.py`). This didn't show
+up during local Windows development because Windows' PyPI torch wheel
+doesn't bundle these Linux-specific CUDA packages the same way.
